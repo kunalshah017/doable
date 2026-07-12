@@ -90,11 +90,11 @@ class WorkspacePatch(APIModel):
 ```
 
 ```ts
-export type StaticFilePath = 'index.html' | 'styles.css' | 'script.js';
+export type StaticFilePath = "index.html" | "styles.css" | "script.js";
 
 export type StaticSourceWorkspace = {
   baseCommitSha: string;
-  files: Partial<Record<StaticFilePath, string>> & { 'index.html': string };
+  files: Partial<Record<StaticFilePath, string>> & { "index.html": string };
 };
 
 export type WorkspacePatch = {
@@ -535,21 +535,39 @@ git commit -m "feat: approve static workspace changes"
 - [ ] **Step 1: Write failing iframe lifecycle tests**
 
 ```ts
-import { WorkspacePreviewManager } from './workspace-preview';
+import { WorkspacePreviewManager } from "./workspace-preview";
 
-it('applies, replaces, and clears one sandboxed preview', () => {
+it("applies, replaces, and clears one sandboxed preview", () => {
   const manager = new WorkspacePreviewManager(document);
-  manager.apply({ patchId: 'one', documentHtml: '<h1>One</h1>', summary: ['One'] });
-  const first = document.querySelector<HTMLIFrameElement>('[data-doable-workspace-preview] iframe');
-  expect(first?.getAttribute('sandbox')).toBe('allow-scripts allow-forms allow-modals');
-  expect(first?.srcdoc).toContain('<h1>One</h1>');
+  manager.apply({
+    patchId: "one",
+    documentHtml: "<h1>One</h1>",
+    summary: ["One"],
+  });
+  const first = document.querySelector<HTMLIFrameElement>(
+    "[data-doable-workspace-preview] iframe",
+  );
+  expect(first?.getAttribute("sandbox")).toBe(
+    "allow-scripts allow-forms allow-modals",
+  );
+  expect(first?.srcdoc).toContain("<h1>One</h1>");
 
-  manager.apply({ patchId: 'two', documentHtml: '<h1>Two</h1>', summary: ['Two'] });
-  expect(document.querySelectorAll('[data-doable-workspace-preview]')).toHaveLength(1);
-  expect(document.querySelector<HTMLIFrameElement>('[data-doable-workspace-preview] iframe')?.srcdoc).toContain('Two');
+  manager.apply({
+    patchId: "two",
+    documentHtml: "<h1>Two</h1>",
+    summary: ["Two"],
+  });
+  expect(
+    document.querySelectorAll("[data-doable-workspace-preview]"),
+  ).toHaveLength(1);
+  expect(
+    document.querySelector<HTMLIFrameElement>(
+      "[data-doable-workspace-preview] iframe",
+    )?.srcdoc,
+  ).toContain("Two");
 
   manager.clear();
-  expect(document.querySelector('[data-doable-workspace-preview]')).toBeNull();
+  expect(document.querySelector("[data-doable-workspace-preview]")).toBeNull();
 });
 ```
 
@@ -564,7 +582,7 @@ Expected: FAIL because `WorkspacePreviewManager` does not exist.
 Add `DOABLE_APPLY_WORKSPACE_PREVIEW` and `DOABLE_CLEAR_WORKSPACE_PREVIEW` to `ContentMessage`. Implement a manager that creates one fixed layer at `z-index: 2147483646`, a Doable toolbar above the iframe, a close button, and an iframe with exactly this sandbox value:
 
 ```ts
-iframe.setAttribute('sandbox', 'allow-scripts allow-forms allow-modals');
+iframe.setAttribute("sandbox", "allow-scripts allow-forms allow-modals");
 iframe.srcdoc = preview.documentHtml;
 ```
 
@@ -595,21 +613,26 @@ git commit -m "feat: preview static workspace in sandbox"
 - [ ] **Step 1: Write failing API tests for workspace preview**
 
 ```ts
-it('requests a workspace preview and records the approved source draft', async () => {
+it("requests a workspace preview and records the approved source draft", async () => {
   const api = authenticatedApi();
-  const preview = await api.previewWorkspace('Add a reservation bar');
+  const preview = await api.previewWorkspace("Add a reservation bar");
   expect(fetch).toHaveBeenNthCalledWith(
     1,
-    expect.stringContaining('/workspace/preview'),
-    expect.objectContaining({ method: 'POST' }),
+    expect.stringContaining("/workspace/preview"),
+    expect.objectContaining({ method: "POST" }),
   );
-  expect(preview.patch.files['index.html']).toContain('reservation');
+  expect(preview.patch.files["index.html"]).toContain("reservation");
 
-  await api.confirmWorkspacePreview('Add a reservation bar', preview.patch, 'before', 'after');
+  await api.confirmWorkspacePreview(
+    "Add a reservation bar",
+    preview.patch,
+    "before",
+    "after",
+  );
   expect(fetch).toHaveBeenNthCalledWith(
     2,
-    expect.stringContaining('/workspace/draft'),
-    expect.objectContaining({ method: 'PUT' }),
+    expect.stringContaining("/workspace/draft"),
+    expect.objectContaining({ method: "PUT" }),
   );
 });
 ```
