@@ -179,7 +179,8 @@ class SessionStore:
         with self._lock:
             state = self._authenticated(session_id, token)
             if state.github_installation is None:
-                raise SessionConflict("Connect GitHub before selecting a repository")
+                raise SessionConflict(
+                    "Connect GitHub before selecting a repository")
             return state.github_installation.model_copy(deep=True)
 
     def bind_repository(
@@ -191,7 +192,8 @@ class SessionStore:
         with self._lock:
             state = self._authenticated(session_id, token)
             if state.github_installation is None:
-                raise SessionConflict("Connect GitHub before selecting a repository")
+                raise SessionConflict(
+                    "Connect GitHub before selecting a repository")
             state.repository = RepositoryBinding(
                 **repository.model_dump(),
                 installation_id=state.github_installation.installation_id,
@@ -230,9 +232,11 @@ class SessionStore:
         with self._lock:
             state = self._authenticated(session_id, session_token)
             if state.repository is None:
-                raise SessionConflict("Select a GitHub repository before release")
+                raise SessionConflict(
+                    "Select a GitHub repository before release")
             if change_ids != [change.change_id for change in state.approved_changes]:
-                raise SessionConflict("Release changes must match the approved ledger in order")
+                raise SessionConflict(
+                    "Release changes must match the approved ledger in order")
 
             references = [
                 ApprovedChangeReference(

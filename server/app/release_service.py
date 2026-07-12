@@ -137,14 +137,16 @@ class StaticSiteTranslator:
                 "unsupported_change", "Script and style elements cannot be released"
             )
 
-        updated_html = self._apply_html(html_source, target, patch.text, patch.attributes)
+        updated_html = self._apply_html(
+            html_source, target, patch.text, patch.attributes)
         updated_css = css_source
         if patch.styles:
             reparsed = _DoableHTMLParser(updated_html, doable_id)
             reparsed.feed(updated_html)
             reparsed.close()
             target = reparsed.matches[0]
-            updated_css = self._apply_css(css_source, target.attrs, patch.styles)
+            updated_css = self._apply_css(
+                css_source, target.attrs, patch.styles)
 
         changed_files: dict[str, str] = {}
         if updated_html != html_source:
@@ -196,15 +198,18 @@ class StaticSiteTranslator:
         for name, value in updates.items():
             safe_name = name.strip().lower()
             if not re.fullmatch(r"[a-z_:][a-z0-9_.:-]*", safe_name):
-                raise ReleaseBlocked("unsupported_change", f"Invalid attribute: {name}")
+                raise ReleaseBlocked("unsupported_change",
+                                     f"Invalid attribute: {name}")
             if safe_name.startswith("on") or safe_name in {
                 "data-doable-id",
                 "srcdoc",
                 "style",
             }:
-                raise ReleaseBlocked("unsupported_change", f"Unsafe attribute: {name}")
+                raise ReleaseBlocked("unsupported_change",
+                                     f"Unsafe attribute: {name}")
             if value is not None and "javascript:" in value.lower():
-                raise ReleaseBlocked("unsupported_change", f"Unsafe attribute value: {name}")
+                raise ReleaseBlocked("unsupported_change",
+                                     f"Unsafe attribute value: {name}")
             normalized[safe_name] = value
 
         result = [
@@ -228,7 +233,8 @@ class StaticSiteTranslator:
         attrs: list[tuple[str, str | None]],
         updates: dict[str, str | None],
     ) -> str:
-        class_value = next((value for name, value in attrs if name == "class"), None)
+        class_value = next(
+            (value for name, value in attrs if name == "class"), None)
         classes = class_value.split() if class_value else []
         if len(classes) != 1 or not re.fullmatch(r"[A-Za-z_-][A-Za-z0-9_-]*", classes[0]):
             raise ReleaseBlocked(
@@ -254,7 +260,8 @@ class StaticSiteTranslator:
         for name, value in updates.items():
             property_name = name.strip().lower()
             if not re.fullmatch(r"(?:--)?[a-z][a-z0-9-]*", property_name):
-                raise ReleaseBlocked("unsupported_change", f"Invalid CSS property: {name}")
+                raise ReleaseBlocked("unsupported_change",
+                                     f"Invalid CSS property: {name}")
             lowered_value = (value or "").lower()
             if any(
                 token in lowered_value
@@ -307,7 +314,8 @@ class StaticSiteTranslator:
             for name, value in sorted(normalized_updates.items())
             if value is not None
         )
-        rule.content = tinycss2.parse_component_value_list(" ".join(filter(None, kept)))
+        rule.content = tinycss2.parse_component_value_list(
+            " ".join(filter(None, kept)))
         return tinycss2.serialize(stylesheet)
 
     @staticmethod
@@ -369,7 +377,8 @@ class ReleaseService:
 
         translations: list[tuple[ApprovedChange, dict[str, str]]] = []
         for change in snapshot.changes:
-            translation = self._translator.apply(html_source, css_source, change)
+            translation = self._translator.apply(
+                html_source, css_source, change)
             html_source = translation.html_source
             css_source = translation.css_source
             translations.append((change, translation.changed_files))

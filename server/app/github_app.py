@@ -99,7 +99,8 @@ class GitHubApp:
     def sign_state(self, session_id: str, lifetime_seconds: int = 600) -> str:
         self._require_configured()
         payload = json.dumps(
-            {"exp": int(time.time()) + lifetime_seconds, "sessionId": session_id},
+            {"exp": int(time.time()) + lifetime_seconds,
+             "sessionId": session_id},
             separators=(",", ":"),
             sort_keys=True,
         ).encode("utf-8")
@@ -181,9 +182,11 @@ class GitHubApp:
                     payload["expires_at"].replace("Z", "+00:00")
                 )
             except (KeyError, TypeError, ValueError) as exception:
-                raise GitHubAPIError("GitHub returned an invalid installation token") from exception
+                raise GitHubAPIError(
+                    "GitHub returned an invalid installation token") from exception
             if not isinstance(token, str):
-                raise GitHubAPIError("GitHub returned an invalid installation token")
+                raise GitHubAPIError(
+                    "GitHub returned an invalid installation token")
 
             usable_until = min(
                 expires_at - timedelta(seconds=60),
@@ -206,9 +209,11 @@ class GitHubApp:
         try:
             account = response.json()["account"]["login"]
         except (KeyError, TypeError, ValueError) as exception:
-            raise GitHubAPIError("GitHub returned invalid installation metadata") from exception
+            raise GitHubAPIError(
+                "GitHub returned invalid installation metadata") from exception
         if not isinstance(account, str) or not account:
-            raise GitHubAPIError("GitHub returned invalid installation metadata")
+            raise GitHubAPIError(
+                "GitHub returned invalid installation metadata")
         return account
 
     def _app_jwt(self) -> str:
@@ -221,12 +226,14 @@ class GitHubApp:
                 algorithm="RS256",
             )
         except (OSError, ValueError) as exception:
-            raise GitHubConfigurationError("GitHub App private key is unavailable") from exception
+            raise GitHubConfigurationError(
+                "GitHub App private key is unavailable") from exception
 
     def _require_configured(self) -> None:
         configured, detail = self.status()
         if not configured:
-            raise GitHubConfigurationError(detail or "GitHub App is not configured")
+            raise GitHubConfigurationError(
+                detail or "GitHub App is not configured")
 
     async def _request(self, method: str, path: str, **kwargs) -> httpx.Response:
         if self._client is not None:

@@ -85,7 +85,4 @@ export type SelectionCompletionResponse = SelectedComponentMessage | ExtensionAc
 export type ContentMessage = SelectionModeMessage | ApplyPreviewMessage | UndoPreviewMessage | ClearPreviewsMessage;
 
 export type ExtensionMessage =
-  | ContentMessage
-  | PendingSelectedComponentMessage
-  | SelectedComponentMessage
-  | SelectionErrorMessage;
+  ContentMessage | PendingSelectedComponentMessage | SelectedComponentMessage | SelectionErrorMessage;

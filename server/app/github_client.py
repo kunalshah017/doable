@@ -33,10 +33,12 @@ class GitHubClient:
             )
             payload = self._json(response)
             repositories = (
-                payload.get("repositories") if isinstance(payload, dict) else None
+                payload.get("repositories") if isinstance(
+                    payload, dict) else None
             )
             if not isinstance(repositories, list):
-                raise GitHubAPIError("GitHub returned an invalid repository list")
+                raise GitHubAPIError(
+                    "GitHub returned an invalid repository list")
             result.extend(
                 self._repository_summary(repository) for repository in repositories
             )
@@ -57,7 +59,8 @@ class GitHubClient:
         try:
             return payload["object"]["sha"]
         except (KeyError, TypeError) as exception:
-            raise GitHubAPIError("GitHub returned an invalid branch reference") from exception
+            raise GitHubAPIError(
+                "GitHub returned an invalid branch reference") from exception
 
     async def get_commit(self, full_name: str, commit_sha: str) -> dict[str, str]:
         payload = self._json(
@@ -66,7 +69,8 @@ class GitHubClient:
         try:
             return {"sha": payload["sha"], "tree_sha": payload["tree"]["sha"]}
         except (KeyError, TypeError) as exception:
-            raise GitHubAPIError("GitHub returned invalid commit metadata") from exception
+            raise GitHubAPIError(
+                "GitHub returned invalid commit metadata") from exception
 
     async def read_file(self, full_name: str, path: str, ref: str) -> str:
         payload = self._json(
@@ -80,13 +84,16 @@ class GitHubClient:
             content = payload["content"]
             encoding = payload["encoding"]
         except (KeyError, TypeError) as exception:
-            raise GitHubAPIError(f"GitHub returned invalid content for {path}") from exception
+            raise GitHubAPIError(
+                f"GitHub returned invalid content for {path}") from exception
         if encoding != "base64" or not isinstance(content, str):
-            raise GitHubAPIError(f"Unsupported GitHub content encoding for {path}")
+            raise GitHubAPIError(
+                f"Unsupported GitHub content encoding for {path}")
         try:
             return base64.b64decode(content, validate=True).decode("utf-8")
         except (ValueError, UnicodeDecodeError) as exception:
-            raise GitHubAPIError(f"Repository file is not valid UTF-8: {path}") from exception
+            raise GitHubAPIError(
+                f"Repository file is not valid UTF-8: {path}") from exception
 
     async def create_tree(
         self,
@@ -118,7 +125,8 @@ class GitHubClient:
             await self._request(
                 "POST",
                 f"/repos/{full_name}/git/commits",
-                json={"message": message, "tree": tree_sha, "parents": [parent_sha]},
+                json={"message": message, "tree": tree_sha,
+                      "parents": [parent_sha]},
             )
         )
         return self._required_string(payload, "sha", "commit")
@@ -142,16 +150,19 @@ class GitHubClient:
             await self._request(
                 "POST",
                 f"/repos/{full_name}/pulls",
-                json={"title": title, "body": body, "head": head, "base": base},
+                json={"title": title, "body": body,
+                      "head": head, "base": base},
             )
         )
         try:
             number = int(payload["number"])
             html_url = payload["html_url"]
         except (KeyError, TypeError, ValueError) as exception:
-            raise GitHubAPIError("GitHub returned invalid pull request metadata") from exception
+            raise GitHubAPIError(
+                "GitHub returned invalid pull request metadata") from exception
         if not isinstance(html_url, str):
-            raise GitHubAPIError("GitHub returned invalid pull request metadata")
+            raise GitHubAPIError(
+                "GitHub returned invalid pull request metadata")
         return number, html_url
 
     async def _request(self, method: str, path: str, **kwargs) -> httpx.Response:
@@ -169,7 +180,8 @@ class GitHubClient:
             async with httpx.AsyncClient(base_url=self._api_url, timeout=30) as client:
                 response = await client.request(method, path, headers=headers, **kwargs)
         if response.is_error:
-            raise GitHubAPIError("GitHub API request failed", response.status_code)
+            raise GitHubAPIError(
+                "GitHub API request failed", response.status_code)
         return response
 
     @staticmethod
@@ -177,7 +189,8 @@ class GitHubClient:
         try:
             return response.json()
         except ValueError as exception:
-            raise GitHubAPIError("GitHub returned a non-JSON response") from exception
+            raise GitHubAPIError(
+                "GitHub returned a non-JSON response") from exception
 
     @staticmethod
     def _repository_summary(payload) -> RepositorySummary:
@@ -190,11 +203,13 @@ class GitHubClient:
                 html_url=payload["html_url"],
             )
         except (KeyError, TypeError, ValueError) as exception:
-            raise GitHubAPIError("GitHub returned invalid repository metadata") from exception
+            raise GitHubAPIError(
+                "GitHub returned invalid repository metadata") from exception
 
     @staticmethod
     def _required_string(payload, key: str, resource: str) -> str:
         value = payload.get(key) if isinstance(payload, dict) else None
         if not isinstance(value, str):
-            raise GitHubAPIError(f"GitHub returned invalid {resource} metadata")
+            raise GitHubAPIError(
+                f"GitHub returned invalid {resource} metadata")
         return value

@@ -171,7 +171,8 @@ def github_status(
         return GitHubStatusResponse(configured=configured, detail=detail)
     if not session_token:
         raise InvalidSessionToken
-    installation, repository = store.get_github_connection(session_id, session_token)
+    installation, repository = store.get_github_connection(
+        session_id, session_token)
     return GitHubStatusResponse(
         configured=configured,
         detail=detail,
@@ -255,7 +256,8 @@ async def bind_github_repository(
         None,
     )
     if repository is None:
-        raise SessionConflict("Repository is not accessible to this GitHub installation")
+        raise SessionConflict(
+            "Repository is not accessible to this GitHub installation")
     return store.bind_repository(session_id, token, repository)
 
 

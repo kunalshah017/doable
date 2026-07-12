@@ -26,7 +26,7 @@ doable/
     app/hermes_service.py            # Hermes manager and specialist orchestration
     app/memory_policy.py             # Supermemory scope, consent, redaction
     app/ledger.py                    # Immutable approval hashes
-    app/github_app.py                # GitHub App installation and token lifecycle
+      app/github_app.py                # GitHub App installation and token lifecycle
     app/github_client.py             # Repository and Git Data API operations
     app/release_service.py           # Approved browser change to source patch
     tests/                           # Server unit and integration tests
