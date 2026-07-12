@@ -405,18 +405,37 @@ class ReleaseService:
                 f"Doable: {change.request.strip()[:72]}",
                 tree_sha,
                 parent_sha,
+                change.approved_at.isoformat(),
             )
             commit_shas.append(parent_sha)
 
         branch = f"doable/{snapshot.ledger_hash[:12]}"
-        await client.create_ref(repository.full_name, branch, commit_shas[-1])
-        pull_request_number, pull_request_url = await client.create_pull_request(
+        final_commit_sha = commit_shas[-1]
+        existing_ref = await client.get_optional_ref(repository.full_name, branch)
+        if existing_ref is None:
+            await client.create_ref(repository.full_name, branch, final_commit_sha)
+        elif existing_ref != final_commit_sha:
+            raise ReleaseBlocked(
+                "release_branch_conflict",
+                "The deterministic release branch exists at a different commit",
+                status_code=409,
+            )
+
+        existing_pull_request = await client.find_open_pull_request(
             repository.full_name,
-            "Apply approved Doable changes",
-            self._pull_request_body(snapshot, commit_shas),
             branch,
             repository.default_branch,
         )
+        if existing_pull_request is None:
+            pull_request_number, pull_request_url = await client.create_pull_request(
+                repository.full_name,
+                "Apply approved Doable changes",
+                self._pull_request_body(snapshot, commit_shas),
+                branch,
+                repository.default_branch,
+            )
+        else:
+            pull_request_number, pull_request_url = existing_pull_request
         return ReleaseResponse(
             pull_request_url=pull_request_url,
             pull_request_number=pull_request_number,

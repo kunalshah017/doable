@@ -1,4 +1,5 @@
 import { completeSelection } from './selection-completion';
+import { getCropBounds } from './region-capture';
 import { describe, expect, it, vi } from 'vitest';
 
 const pendingSelection = {
@@ -80,5 +81,17 @@ describe('completeSelection', () => {
       ok: false,
       error: 'Selection completion failed: Return to the selected tab and try again.',
     });
+  });
+});
+
+describe('getCropBounds', () => {
+  it('scales CSS pixels to bitmap pixels and clamps the selected region', () => {
+    expect(
+      getCropBounds(
+        { x: -10, y: 100, width: 210, height: 250 },
+        { width: 1000, height: 500 },
+        { width: 2000, height: 1000 },
+      ),
+    ).toEqual({ x: 0, y: 200, width: 400, height: 500 });
   });
 });

@@ -62,6 +62,14 @@ class GitHubClient:
             raise GitHubAPIError(
                 "GitHub returned an invalid branch reference") from exception
 
+    async def get_optional_ref(self, full_name: str, branch: str) -> str | None:
+        try:
+            return await self.get_ref(full_name, branch)
+        except GitHubAPIError as exception:
+            if exception.status_code == 404:
+                return None
+            raise
+
     async def get_commit(self, full_name: str, commit_sha: str) -> dict[str, str]:
         payload = self._json(
             await self._request("GET", f"/repos/{full_name}/git/commits/{commit_sha}")
@@ -120,13 +128,24 @@ class GitHubClient:
         message: str,
         tree_sha: str,
         parent_sha: str,
+        created_at: str,
     ) -> str:
+        identity = {
+            "name": "Doable",
+            "email": "doable@users.noreply.github.com",
+            "date": created_at,
+        }
         payload = self._json(
             await self._request(
                 "POST",
                 f"/repos/{full_name}/git/commits",
-                json={"message": message, "tree": tree_sha,
-                      "parents": [parent_sha]},
+                json={
+                    "message": message,
+                    "tree": tree_sha,
+                    "parents": [parent_sha],
+                    "author": identity,
+                    "committer": identity,
+                },
             )
         )
         return self._required_string(payload, "sha", "commit")
@@ -160,6 +179,42 @@ class GitHubClient:
         except (KeyError, TypeError, ValueError) as exception:
             raise GitHubAPIError(
                 "GitHub returned invalid pull request metadata") from exception
+        if not isinstance(html_url, str):
+            raise GitHubAPIError(
+                "GitHub returned invalid pull request metadata")
+        return number, html_url
+
+    async def find_open_pull_request(
+        self,
+        full_name: str,
+        head: str,
+        base: str,
+    ) -> tuple[int, str] | None:
+        owner = full_name.split("/", 1)[0]
+        payload = self._json(
+            await self._request(
+                "GET",
+                f"/repos/{full_name}/pulls",
+                params={
+                    "state": "open",
+                    "head": f"{owner}:{head}",
+                    "base": base,
+                    "per_page": 1,
+                },
+            )
+        )
+        if not isinstance(payload, list):
+            raise GitHubAPIError(
+                "GitHub returned an invalid pull request list")
+        if not payload:
+            return None
+        try:
+            number = int(payload[0]["number"])
+            html_url = payload[0]["html_url"]
+        except (KeyError, TypeError, ValueError) as exception:
+            raise GitHubAPIError(
+                "GitHub returned invalid pull request metadata"
+            ) from exception
         if not isinstance(html_url, str):
             raise GitHubAPIError(
                 "GitHub returned invalid pull request metadata")

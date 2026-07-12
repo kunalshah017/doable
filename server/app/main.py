@@ -173,11 +173,16 @@ def github_status(
         raise InvalidSessionToken
     installation, repository = store.get_github_connection(
         session_id, session_token)
+    pending_installation = store.get_pending_installation(
+        session_id, session_token)
     return GitHubStatusResponse(
         configured=configured,
         detail=detail,
         connected=installation is not None,
         account=installation.account if installation is not None else None,
+        pending_account=(
+            pending_installation.account if pending_installation is not None else None
+        ),
         repository=repository,
     )
 
@@ -195,9 +200,9 @@ def start_github_install(
     session_id: str,
     token: SessionToken,
 ) -> GitHubInstallStartResponse:
-    store.authenticate(session_id, token)
+    nonce = store.begin_github_install(session_id, token)
     return GitHubInstallStartResponse(
-        install_url=github_app.installation_url(session_id)
+        install_url=github_app.installation_url(session_id, nonce)
     )
 
 
@@ -209,16 +214,39 @@ async def github_callback(
 ) -> HTMLResponse:
     if installation_id <= 0 or setup_action not in {"install", "update"}:
         raise InvalidGitHubState
-    session_id = github_app.verify_state(state)
+    session_id, nonce = github_app.verify_state(state)
+    try:
+        store.consume_github_install(session_id, nonce)
+    except SessionConflict as exception:
+        raise InvalidGitHubState from exception
     account = await github_app.installation_account(installation_id)
-    store.bind_installation(
-        session_id,
-        GitHubInstallation(installation_id=installation_id, account=account),
-    )
+    try:
+        store.set_pending_installation(
+            session_id,
+            nonce,
+            GitHubInstallation(
+                installation_id=installation_id, account=account),
+        )
+    except SessionConflict as exception:
+        raise InvalidGitHubState from exception
     return HTMLResponse(
-        "<!doctype html><html><head><title>GitHub connected</title></head>"
-        "<body><main><h1>GitHub connected</h1>"
-        "<p>You can close this window and return to Doable.</p></main></body></html>"
+        "<!doctype html><html><head><title>GitHub installation ready</title></head>"
+        "<body><main><h1>GitHub installation ready</h1>"
+        "<p>Return to Doable to confirm this installation.</p></main></body></html>"
+    )
+
+
+@app.post(
+    "/v1/sessions/{session_id}/github/install/confirm",
+    response_model=GitHubInstallation,
+)
+def confirm_github_install(
+    session_id: str,
+    token: SessionToken,
+) -> GitHubInstallation:
+    return store.confirm_pending_installation(
+        session_id,
+        token,
     )
 
 

@@ -1,6 +1,6 @@
 import secrets
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from threading import RLock
 from uuid import uuid4
 
@@ -40,6 +40,14 @@ class ReleaseSnapshot:
 
 
 @dataclass(slots=True)
+class GitHubInstallAttempt:
+    nonce: str
+    expires_at: datetime
+    consumed: bool = False
+    candidate: GitHubInstallation | None = None
+
+
+@dataclass(slots=True)
 class SessionState:
     session_id: str
     token: str
@@ -47,6 +55,7 @@ class SessionState:
     draft: DraftState | None = None
     approved_changes: list[ApprovedChange] = field(default_factory=list)
     github_installation: GitHubInstallation | None = None
+    github_install_attempt: GitHubInstallAttempt | None = None
     repository: RepositoryBinding | None = None
     approval: ApprovalRecord | None = None
 
@@ -161,6 +170,87 @@ class SessionStore:
                 state.repository = None
             state.github_installation = installation.model_copy(deep=True)
             return state.github_installation.model_copy(deep=True)
+
+    def begin_github_install(self, session_id: str, token: str) -> str:
+        with self._lock:
+            state = self._authenticated(session_id, token)
+            nonce = secrets.token_urlsafe(32)
+            state.github_install_attempt = GitHubInstallAttempt(
+                nonce=nonce,
+                expires_at=datetime.now(timezone.utc) + timedelta(minutes=10),
+            )
+            return nonce
+
+    def consume_github_install(self, session_id: str, nonce: str) -> None:
+        with self._lock:
+            state = self._sessions.get(session_id)
+            attempt = state.github_install_attempt if state is not None else None
+            if (
+                attempt is None
+                or attempt.consumed
+                or datetime.now(timezone.utc) >= attempt.expires_at
+                or not secrets.compare_digest(attempt.nonce, nonce)
+            ):
+                raise SessionConflict(
+                    "Invalid or expired GitHub installation state")
+            attempt.consumed = True
+
+    def set_pending_installation(
+        self,
+        session_id: str,
+        nonce: str,
+        installation: GitHubInstallation,
+    ) -> GitHubInstallation:
+        with self._lock:
+            state = self._sessions.get(session_id)
+            attempt = state.github_install_attempt if state is not None else None
+            if (
+                attempt is None
+                or not attempt.consumed
+                or datetime.now(timezone.utc) >= attempt.expires_at
+                or not secrets.compare_digest(attempt.nonce, nonce)
+            ):
+                raise SessionConflict(
+                    "Invalid or expired GitHub installation state")
+            attempt.candidate = installation.model_copy(deep=True)
+            return attempt.candidate.model_copy(deep=True)
+
+    def get_pending_installation(
+        self,
+        session_id: str,
+        token: str,
+    ) -> GitHubInstallation | None:
+        with self._lock:
+            state = self._authenticated(session_id, token)
+            attempt = state.github_install_attempt
+            if attempt is None or datetime.now(timezone.utc) >= attempt.expires_at:
+                state.github_install_attempt = None
+                return None
+            return self._copy(attempt.candidate)
+
+    def confirm_pending_installation(
+        self,
+        session_id: str,
+        token: str,
+    ) -> GitHubInstallation:
+        with self._lock:
+            state = self._authenticated(session_id, token)
+            attempt = state.github_install_attempt
+            if (
+                attempt is None
+                or not attempt.consumed
+                or attempt.candidate is None
+                or datetime.now(timezone.utc) >= attempt.expires_at
+            ):
+                state.github_install_attempt = None
+                raise SessionConflict(
+                    "There is no pending GitHub installation to confirm")
+            installation = attempt.candidate.model_copy(deep=True)
+            if state.github_installation != installation:
+                state.repository = None
+            state.github_installation = installation
+            state.github_install_attempt = None
+            return installation.model_copy(deep=True)
 
     def get_github_connection(
         self,

@@ -141,6 +141,7 @@ class GitHubStatusResponse(APIModel):
     detail: str | None = None
     connected: bool = False
     account: str | None = None
+    pending_account: str | None = None
     repository: RepositoryBinding | None = None
 
 

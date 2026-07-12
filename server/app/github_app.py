@@ -88,19 +88,22 @@ class GitHubApp:
             return False, "GitHub App private key is unavailable"
         return True, None
 
-    def installation_url(self, session_id: str) -> str:
+    def installation_url(self, session_id: str, nonce: str) -> str:
         self._require_configured()
-        state = self.sign_state(session_id)
+        state = self.sign_state(session_id, nonce)
         return (
             f"https://github.com/apps/{self.config.slug}/installations/new?"
             f"{urlencode({'state': state})}"
         )
 
-    def sign_state(self, session_id: str, lifetime_seconds: int = 600) -> str:
+    def sign_state(self, session_id: str, nonce: str, lifetime_seconds: int = 600) -> str:
         self._require_configured()
         payload = json.dumps(
-            {"exp": int(time.time()) + lifetime_seconds,
-             "sessionId": session_id},
+            {
+                "exp": int(time.time()) + lifetime_seconds,
+                "nonce": nonce,
+                "sessionId": session_id,
+            },
             separators=(",", ":"),
             sort_keys=True,
         ).encode("utf-8")
@@ -112,7 +115,7 @@ class GitHubApp:
         ).digest()
         return f"{encoded}.{self._base64url(signature)}"
 
-    def verify_state(self, state: str) -> str:
+    def verify_state(self, state: str) -> tuple[str, str]:
         self._require_configured()
         try:
             encoded, supplied_signature = state.split(".", 1)
@@ -127,6 +130,7 @@ class GitHubApp:
                 raise InvalidGitHubState
             payload = json.loads(self._decode_base64url(encoded))
             session_id = payload["sessionId"]
+            nonce = payload["nonce"]
             expires_at = int(payload["exp"])
         except (
             binascii.Error,
@@ -137,9 +141,15 @@ class GitHubApp:
             ValueError,
         ) as exception:
             raise InvalidGitHubState from exception
-        if not isinstance(session_id, str) or not session_id or expires_at < int(time.time()):
+        if (
+            not isinstance(session_id, str)
+            or not session_id
+            or not isinstance(nonce, str)
+            or not nonce
+            or expires_at < int(time.time())
+        ):
             raise InvalidGitHubState
-        return session_id
+        return session_id, nonce
 
     async def installation_token(
         self,
