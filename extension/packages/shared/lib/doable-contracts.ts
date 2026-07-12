@@ -16,6 +16,22 @@ export type SelectedComponent = {
 
 export type PendingSelectedComponent = Omit<SelectedComponent, 'tabId' | 'screenshotDataUrl'>;
 
+export type StaticFilePath = 'index.html' | 'styles.css' | 'script.js';
+
+export type StaticSourceWorkspace = {
+  baseCommitSha: string;
+  files: Partial<Record<StaticFilePath, string>> & { 'index.html': string };
+};
+
+export type WorkspacePatch = {
+  patchId: string;
+  selectionId?: string;
+  baseCommitSha: string;
+  files: Partial<Record<StaticFilePath, string>>;
+  summary: string[];
+  rationale: string;
+};
+
 export type PreviewPatch = {
   patchId: string;
   selectionId: string;
