@@ -38,6 +38,7 @@ class GitHubAppConfig:
     app_id: str | None
     slug: str | None
     private_key_path: str | None
+    private_key: str | None
     callback_url: str
     state_secret: str | None
 
@@ -47,6 +48,7 @@ class GitHubAppConfig:
             app_id=os.getenv("GITHUB_APP_ID"),
             slug=os.getenv("GITHUB_APP_SLUG"),
             private_key_path=os.getenv("GITHUB_APP_PRIVATE_KEY_PATH"),
+            private_key=os.getenv("GITHUB_APP_PRIVATE_KEY"),
             callback_url=os.getenv(
                 "GITHUB_APP_CALLBACK_URL",
                 "http://127.0.0.1:8787/v1/github/callback",
@@ -78,13 +80,14 @@ class GitHubApp:
         required = {
             "GITHUB_APP_ID": self.config.app_id,
             "GITHUB_APP_SLUG": self.config.slug,
-            "GITHUB_APP_PRIVATE_KEY_PATH": self.config.private_key_path,
             "GITHUB_STATE_SECRET": self.config.state_secret,
         }
         missing = [name for name, value in required.items() if not value]
         if missing:
             return False, f"GitHub App is not configured: missing {', '.join(missing)}"
-        if not Path(self.config.private_key_path or "").is_file():
+        if not self.config.private_key and not Path(
+            self.config.private_key_path or ""
+        ).is_file():
             return False, "GitHub App private key is unavailable"
         return True, None
 
@@ -228,7 +231,11 @@ class GitHubApp:
 
     def _app_jwt(self) -> str:
         try:
-            private_key = Path(self.config.private_key_path or "").read_bytes()
+            private_key = (
+                self.config.private_key.replace("\\n", "\n").encode("utf-8")
+                if self.config.private_key
+                else Path(self.config.private_key_path or "").read_bytes()
+            )
             now = int(time.time())
             return jwt.encode(
                 {"iat": now - 60, "exp": now + 540, "iss": self.config.app_id},

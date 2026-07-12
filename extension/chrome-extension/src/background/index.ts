@@ -2,6 +2,17 @@ import { completeSelection } from './selection-completion';
 import type { ContentMessage, ExtensionActionResponse, ExtensionMessage } from '@extension/shared';
 import 'webextension-polyfill';
 
+const enableActionSidePanel = async () => {
+  try {
+    await chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
+  } catch (error) {
+    console.error('[Doable] Could not enable action-click side panel', error);
+  }
+};
+
+void enableActionSidePanel();
+chrome.runtime.onInstalled.addListener(() => void enableActionSidePanel());
+
 const isContentMessage = (message: ExtensionMessage): message is ContentMessage =>
   message.type === 'DOABLE_SET_SELECTION_MODE' ||
   message.type === 'DOABLE_APPLY_PREVIEW' ||

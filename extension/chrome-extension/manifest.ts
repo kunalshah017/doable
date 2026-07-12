@@ -14,6 +14,12 @@ const manifest = {
     service_worker: 'background.js',
     type: 'module',
   },
+  action: {
+    default_icon: {
+      '128': 'icon-128.png',
+    },
+    default_title: 'Open Doable',
+  },
   icons: {
     '128': 'icon-128.png',
   },

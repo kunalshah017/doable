@@ -1,0 +1,32 @@
+services:
+  - type: web
+    name: doable-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    autoDeployTrigger: commit
+    envVars:
+      - key: PORT
+        value: 8000
+      - key: HERMES_MODEL
+        value: gpt-5.4
+      - key: SUPERMEMORY_CONTAINER_TAG
+        value: doable-production
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: SUPERMEMORY_API_KEY
+        sync: false
+      - key: API_SERVER_KEY
+        generateValue: true
+      - key: CONVEX_URL
+        sync: false
+      - key: GITHUB_APP_ID
+        sync: false
+      - key: GITHUB_APP_SLUG
+        sync: false
+      - key: GITHUB_APP_PRIVATE_KEY
+        sync: false
+      - key: GITHUB_APP_CALLBACK_URL
+        sync: false
+      - key: GITHUB_STATE_SECRET
+        generateValue: true

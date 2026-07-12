@@ -1,0 +1,14 @@
+.git
+.env
+.env.*
+!.env.example
+.worktrees
+**/.DS_Store
+**/.pytest_cache
+**/.turbo
+**/.venv
+**/__pycache__
+**/dist
+**/node_modules
+extension
+landing

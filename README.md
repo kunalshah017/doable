@@ -26,3 +26,12 @@ uv run uvicorn app.main:app --reload --port 8787
 ```
 
 The extension is based on release `0.5.2` of `Jonghakseo/chrome-extension-boilerplate-react-vite`. Its MIT license is preserved in `extension/LICENSE`.
+
+## Single-Container Deployment
+
+The root `Dockerfile` extends the official Hermes image and runs both services:
+
+- Hermes API gateway privately on `127.0.0.1:8642`
+- Doable FastAPI publicly on `$PORT`
+
+Deploy the repository as a Docker web service using `render.yaml`, or use the same image on any container host. Configure the environment variables listed in `server/.env.example`. The extension should set `CEB_SERVER_URL` to the deployed FastAPI origin before building.
