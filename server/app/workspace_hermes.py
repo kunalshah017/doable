@@ -3,6 +3,7 @@ import re
 from typing import Any
 from uuid import uuid4
 
+import httpx
 from pydantic import ValidationError
 
 from app.hermes_service import HermesInvalidResponse, HermesService
@@ -12,6 +13,15 @@ WORKSPACE_INSTRUCTIONS = """You are the Doable static-site source editor. Return
 
 
 class WorkspaceHermesService(HermesService):
+    def __init__(
+        self,
+        base_url: str | None = None,
+        api_key: str | None = None,
+        client: httpx.AsyncClient | None = None,
+        timeout: float = 120.0,
+    ) -> None:
+        super().__init__(base_url, api_key, client, timeout)
+
     async def preview(
         self,
         manager_request: str,

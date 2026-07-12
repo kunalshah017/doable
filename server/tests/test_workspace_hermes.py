@@ -15,6 +15,12 @@ def workspace() -> StaticSourceWorkspace:
     )
 
 
+def test_workspace_hermes_allows_large_source_responses() -> None:
+    service = WorkspaceHermesService("http://hermes.test", "key")
+
+    assert service.timeout == 120.0
+
+
 @pytest.mark.asyncio
 async def test_hermes_returns_only_changed_supported_files() -> None:
     response = {
