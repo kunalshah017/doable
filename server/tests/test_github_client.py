@@ -33,3 +33,23 @@ async def test_read_file_accepts_github_wrapped_base64() -> None:
         content = await client.read_file("owner/repository", "index.html", "base-sha")
 
     assert content == "<main>Doable</main>"
+
+
+@pytest.mark.asyncio
+async def test_read_optional_file_returns_none_for_missing_path() -> None:
+    async def respond(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(404, json={"message": "Not Found"})
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(respond),
+        base_url="https://api.github.test",
+    ) as http_client:
+        client = GitHubClient(GitHubAppStub(), 1, 2, client=http_client)
+
+        content = await client.read_optional_file(
+            "owner/repository",
+            "script.js",
+            "base-sha",
+        )
+
+    assert content is None

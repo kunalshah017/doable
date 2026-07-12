@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -34,6 +34,33 @@ class SelectedComponent(APIModel):
     computed_styles: dict[str, str]
     viewport: Viewport
     screenshot_data_url: str
+
+
+StaticFilePath = Literal["index.html", "styles.css", "script.js"]
+
+
+class StaticSourceWorkspace(APIModel):
+    base_commit_sha: str = Field(min_length=7, max_length=64)
+    files: dict[StaticFilePath, str]
+
+    @field_validator("files")
+    @classmethod
+    def require_index_html(
+        cls,
+        files: dict[StaticFilePath, str],
+    ) -> dict[StaticFilePath, str]:
+        if "index.html" not in files:
+            raise ValueError("Static workspace requires index.html")
+        return files
+
+
+class WorkspacePatch(APIModel):
+    patch_id: str
+    selection_id: str | None = None
+    base_commit_sha: str = Field(min_length=7, max_length=64)
+    files: dict[StaticFilePath, str] = Field(min_length=1)
+    summary: list[str] = Field(min_length=1, max_length=12)
+    rationale: str = Field(min_length=1, max_length=2_000)
 
 
 class PreviewPatch(APIModel):
@@ -106,12 +133,37 @@ class DraftState(DraftRequest):
     selection_id: str
 
 
+class WorkspaceDraftRequest(APIModel):
+    request: str = Field(min_length=1, max_length=4_000)
+    patch: WorkspacePatch
+    before_screenshot: str
+    after_screenshot: str
+    qa: QAResult = Field(default_factory=QAResult)
+
+
+class WorkspaceDraftState(WorkspaceDraftRequest):
+    pass
+
+
 class ApprovedChange(APIModel):
     change_id: str
     change_hash: str
     selection: SelectedComponent
     request: str
     preview_patch: PreviewPatch
+    before_screenshot: str
+    after_screenshot: str
+    qa: QAResult
+    approved_at: datetime
+
+
+class ApprovedWorkspaceChange(APIModel):
+    change_id: str
+    change_hash: str
+    request: str
+    workspace_patch: WorkspacePatch
+    source_hashes_before: dict[StaticFilePath, str]
+    source_hashes_after: dict[StaticFilePath, str]
     before_screenshot: str
     after_screenshot: str
     qa: QAResult
@@ -195,6 +247,26 @@ class ApprovalResponse(APIModel):
     change: ApprovedChange
     approval_token: str
     ledger_hash: str
+
+
+class WorkspaceApprovalResponse(APIModel):
+    change: ApprovedWorkspaceChange
+    approval_token: str
+    ledger_hash: str
+
+
+class WorkspaceChangesResponse(APIModel):
+    changes: list[ApprovedWorkspaceChange]
+
+
+class WorkspaceDraftResponse(APIModel):
+    draft: WorkspaceDraftState
+
+
+class WorkspacePreviewResponse(APIModel):
+    patch: WorkspacePatch
+    preview_document: str
+    response_id: str | None = None
 
 
 class ChangesResponse(APIModel):

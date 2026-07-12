@@ -17,7 +17,9 @@ const isContentMessage = (message: ExtensionMessage): message is ContentMessage 
   message.type === 'DOABLE_SET_SELECTION_MODE' ||
   message.type === 'DOABLE_APPLY_PREVIEW' ||
   message.type === 'DOABLE_UNDO_PREVIEW' ||
-  message.type === 'DOABLE_CLEAR_PREVIEWS';
+  message.type === 'DOABLE_CLEAR_PREVIEWS' ||
+  message.type === 'DOABLE_APPLY_WORKSPACE_PREVIEW' ||
+  message.type === 'DOABLE_CLEAR_WORKSPACE_PREVIEW';
 
 const getActiveTab = async () => {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });

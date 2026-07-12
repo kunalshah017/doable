@@ -2,12 +2,13 @@ import '@src/SidePanel.css';
 import { DoableServerApi, SERVER_BASE_URL, displayError } from '@src/server-api';
 import { useEffect, useRef, useState } from 'react';
 import type {
-  ApprovedChange,
+  ApprovedWorkspaceChange,
   ContentMessage,
   ExtensionActionResponse,
   ExtensionMessage,
-  PreviewPatch,
   SelectedComponent,
+  StaticSourceWorkspace,
+  WorkspacePatch,
 } from '@extension/shared';
 import type { GitHubStatus, ReleaseApproval, ReleaseResponse, RepositorySummary } from '@src/server-api';
 
@@ -18,7 +19,7 @@ type GitHubBusyAction = 'connecting' | 'binding' | 'disconnecting' | 'releasing'
 type ServiceState = 'checking' | 'online' | 'offline';
 type Notice = { kind: 'error' | 'success'; text: string } | null;
 
-const sameChangeIds = (approval: ReleaseApproval | null, changes: ApprovedChange[]) =>
+const sameChangeIds = (approval: ReleaseApproval | null, changes: Array<{ changeId: string }>) =>
   approval?.changeIds.length === changes.length &&
   approval.changeIds.every((changeId, index) => changeId === changes[index]?.changeId);
 
@@ -57,9 +58,9 @@ const SidePanel = () => {
   const [hermesDetail, setHermesDetail] = useState('');
   const [selection, setSelection] = useState<SelectedComponent | null>(null);
   const [request, setRequest] = useState('');
-  const [draft, setDraft] = useState<{ request: string; patch: PreviewPatch } | null>(null);
-  const [changes, setChanges] = useState<ApprovedChange[]>([]);
-  const [approvedSelectionId, setApprovedSelectionId] = useState<string | null>(null);
+  const [workspaceSource, setWorkspaceSource] = useState<StaticSourceWorkspace | null>(null);
+  const [draft, setDraft] = useState<{ request: string; patch: WorkspacePatch } | null>(null);
+  const [changes, setChanges] = useState<ApprovedWorkspaceChange[]>([]);
   const [githubStatus, setGitHubStatus] = useState<GitHubStatus | null>(null);
   const [githubError, setGitHubError] = useState('');
   const [repositories, setRepositories] = useState<RepositorySummary[]>([]);
@@ -89,7 +90,7 @@ const SidePanel = () => {
         if (!active) return;
 
         const session = await serverApi.getSession();
-        const approvedChanges = await serverApi.getChanges();
+        const approvedChanges = await serverApi.getWorkspaceChanges();
         const [hermesResult, githubResult, approvalResult] = await Promise.allSettled([
           serverApi.hermesStatus(),
           serverApi.getGitHubStatus(),
@@ -97,15 +98,9 @@ const SidePanel = () => {
         ]);
         if (!active) return;
         setSelection(session.selection);
-        setDraft(session.draft ? { request: session.draft.request, patch: session.draft.patch } : null);
-        setRequest(session.draft?.request || '');
+        setDraft(null);
+        setRequest('');
         setChanges(approvedChanges);
-        setApprovedSelectionId(
-          session.selection &&
-            approvedChanges.some(change => change.selection.selectionId === session.selection?.selectionId)
-            ? session.selection.selectionId
-            : null,
-        );
         setHermesState(
           hermesResult.status === 'fulfilled' && hermesResult.value.status === 'available' ? 'online' : 'offline',
         );
@@ -129,6 +124,19 @@ const SidePanel = () => {
         setGitHubStatus(nextGitHubStatus);
         setGitHubError('');
         setInstallStarted(false);
+        if (nextGitHubStatus.repository) {
+          try {
+            const source = await serverApi.getWorkspaceSource();
+            if (!active) return;
+            setWorkspaceSource(source);
+          } catch (error) {
+            if (!active) return;
+            setWorkspaceSource(null);
+            setGitHubError(displayError(error));
+          }
+        } else {
+          setWorkspaceSource(null);
+        }
         if (nextGitHubStatus.connected && !nextGitHubStatus.repository) {
           try {
             const availableRepositories = await serverApi.listGitHubRepositories();
@@ -191,8 +199,7 @@ const SidePanel = () => {
           setSelection(message.component);
           setDraft(null);
           setRequest('');
-          setApprovedSelectionId(null);
-          setNotice({ kind: 'success', text: 'Component selected.' });
+          setNotice({ kind: 'success', text: 'Component selected as optional context.' });
         })
         .catch(error => setNotice({ kind: 'error', text: displayError(error) }));
     };
@@ -215,26 +222,31 @@ const SidePanel = () => {
 
   const previewChange = async () => {
     const trimmedRequest = request.trim();
-    if (!selection || !trimmedRequest) return;
+    if (!workspaceSource || !trimmedRequest) return;
 
     setNotice(null);
     setBusy('previewing');
-    let appliedPatch: PreviewPatch | null = null;
+    let appliedPatchId: string | null = null;
     try {
-      const { patch } = await serverApi.preview(trimmedRequest);
-      await sendToTab(selection.tabId, { type: 'DOABLE_APPLY_PREVIEW', selector: selection.selector, patch });
-      appliedPatch = patch;
-      await serverApi.confirmPreview(trimmedRequest, selection, patch);
+      const tab = await getActiveWebTab();
+      const { patch, previewDocument } = await serverApi.previewWorkspace(trimmedRequest);
+      await sendToTab(tab.id, {
+        type: 'DOABLE_APPLY_WORKSPACE_PREVIEW',
+        preview: { patchId: patch.patchId, documentHtml: previewDocument, summary: patch.summary },
+      });
+      appliedPatchId = patch.patchId;
+      const screenshot = selection?.screenshotDataUrl || '';
+      await serverApi.confirmWorkspacePreview(trimmedRequest, patch, screenshot, screenshot);
       setDraft({ request: trimmedRequest, patch });
-      setNotice({ kind: 'success', text: 'Preview applied to the page.' });
+      setNotice({ kind: 'success', text: 'Full-page sandbox preview applied.' });
     } catch (error) {
-      if (appliedPatch) {
-        await sendToTab(selection.tabId, {
-          type: 'DOABLE_UNDO_PREVIEW',
-          patchId: appliedPatch.patchId,
-        }).catch(() => undefined);
+      if (appliedPatchId) {
+        const tab = await getActiveWebTab().catch(() => null);
+        if (tab) {
+          await sendToTab(tab.id, { type: 'DOABLE_CLEAR_WORKSPACE_PREVIEW' }).catch(() => undefined);
+        }
       }
-      await serverApi.deleteDraft().catch(() => undefined);
+      await serverApi.deleteWorkspaceDraft().catch(() => undefined);
       setNotice({ kind: 'error', text: displayError(error) });
     } finally {
       setBusy(null);
@@ -242,12 +254,13 @@ const SidePanel = () => {
   };
 
   const undoPreview = async () => {
-    if (!selection || !draft) return;
+    if (!draft) return;
     setNotice(null);
     setBusy('undoing');
     try {
-      await serverApi.deleteDraft();
-      await sendToTab(selection.tabId, { type: 'DOABLE_UNDO_PREVIEW', patchId: draft.patch.patchId });
+      const tab = await getActiveWebTab();
+      await serverApi.deleteWorkspaceDraft();
+      await sendToTab(tab.id, { type: 'DOABLE_CLEAR_WORKSPACE_PREVIEW' });
       setDraft(null);
       setNotice({ kind: 'success', text: 'Preview undone.' });
     } catch (error) {
@@ -258,12 +271,13 @@ const SidePanel = () => {
   };
 
   const discardDraft = async () => {
-    if (!selection) return;
+    if (!draft) return;
     setNotice(null);
     setBusy('discarding');
     try {
-      await serverApi.deleteDraft();
-      await sendToTab(selection.tabId, { type: 'DOABLE_CLEAR_PREVIEWS' });
+      const tab = await getActiveWebTab();
+      await serverApi.deleteWorkspaceDraft();
+      await sendToTab(tab.id, { type: 'DOABLE_CLEAR_WORKSPACE_PREVIEW' });
       setDraft(null);
       setRequest('');
       setNotice({ kind: 'success', text: 'Draft cleared.' });
@@ -275,11 +289,11 @@ const SidePanel = () => {
   };
 
   const approveChange = async () => {
-    if (!selection || !draft) return;
+    if (!draft) return;
     setNotice(null);
     setBusy('approving');
     try {
-      const approval = await serverApi.approve();
+      const approval = await serverApi.approveWorkspaceChange();
       const nextChanges = [...changes, approval.change];
       const nextReleaseApproval = await serverApi.saveReleaseApproval(
         approval.approvalToken,
@@ -290,7 +304,6 @@ const SidePanel = () => {
       setReleaseResult(null);
       setDraft(null);
       setRequest('');
-      setApprovedSelectionId(approval.change.selection.selectionId);
       setNotice({ kind: 'success', text: 'Change approved.' });
     } catch (error) {
       setNotice({ kind: 'error', text: displayError(error) });
@@ -321,7 +334,9 @@ const SidePanel = () => {
     setGitHubBusy('binding');
     try {
       const repository = await serverApi.bindGitHubRepository(selectedRepositoryId);
+      const source = await serverApi.getWorkspaceSource();
       setGitHubStatus(current => (current ? { ...current, connected: true, repository } : current));
+      setWorkspaceSource(source);
       setGitHubError('');
       setReleaseResult(null);
       setNotice({ kind: 'success', text: `${repository.fullName} selected for release.` });
@@ -343,6 +358,7 @@ const SidePanel = () => {
       setGitHubError('');
       setRepositories(availableRepositories);
       setRepositoryId(String(availableRepositories[0]?.repositoryId || ''));
+      setWorkspaceSource(null);
       setReleaseResult(null);
       setNotice({ kind: 'success', text: 'Repository disconnected from this Doable session.' });
     } catch (error) {
@@ -369,7 +385,7 @@ const SidePanel = () => {
   };
 
   const selectedSummary = selection ? componentSummary(selection) : null;
-  const stage = !selection ? 1 : busy === 'previewing' ? 3 : draft ? 4 : approvedSelectionId ? 5 : 2;
+  const stage = !workspaceSource ? 1 : busy === 'previewing' ? 3 : draft ? 4 : changes.length > 0 ? 5 : 2;
   const stages = ['Select', 'Describe', 'Preview', 'Approve'];
   const selectedRepository = repositories.find(repository => String(repository.repositoryId) === repositoryId);
   const releaseReady = Boolean(
@@ -481,7 +497,7 @@ const SidePanel = () => {
                 </div>
               </div>
             ) : (
-              <p className="empty-copy">Open a website, then select the part you want to change.</p>
+              <p className="empty-copy">Selection is optional. Choose an element when it helps focus the full-page request.</p>
             )}
           </section>
 
@@ -493,6 +509,14 @@ const SidePanel = () => {
               </div>
             </div>
             <label htmlFor="change-request">What should be different?</label>
+            {workspaceSource ? (
+              <p className="source-meta">
+                <span>{Object.keys(workspaceSource.files).join(', ')}</span>
+                <code>{workspaceSource.baseCommitSha.slice(0, 12)}</code>
+              </p>
+            ) : (
+              <p className="release-help">Connect and select a root static-site repository before previewing.</p>
+            )}
             <textarea
               id="change-request"
               value={request}
@@ -500,14 +524,14 @@ const SidePanel = () => {
               placeholder="Make this call to action clearer and more prominent."
               rows={4}
               maxLength={4000}
-              disabled={!selection || draft !== null || busy !== null}
+              disabled={!workspaceSource || draft !== null || busy !== null}
             />
             <button
               className="primary full-width"
               type="button"
               onClick={() => void previewChange()}
-              disabled={!selection || !request.trim() || draft !== null || busy !== null || hermesState !== 'online'}>
-              {busy === 'previewing' ? 'Creating preview...' : 'Preview change'}
+              disabled={!workspaceSource || !request.trim() || draft !== null || busy !== null || hermesState !== 'online'}>
+              {busy === 'previewing' ? 'Creating full-page preview...' : 'Preview full page'}
             </button>
           </section>
 
@@ -523,6 +547,11 @@ const SidePanel = () => {
                 <div className="rationale">
                   <span>Hermes rationale</span>
                   <p>{draft.patch.rationale}</p>
+                </div>
+                <div className="workspace-files">
+                  {Object.keys(draft.patch.files).map(path => (
+                    <code key={path}>{path}</code>
+                  ))}
                 </div>
                 <div className="action-row">
                   <button
@@ -549,7 +578,7 @@ const SidePanel = () => {
                 </div>
               </>
             ) : (
-              <p className="empty-copy">Your reversible preview and approval controls will appear here.</p>
+              <p className="empty-copy">The reversible sandbox preview and exact changed files will appear here.</p>
             )}
           </section>
 

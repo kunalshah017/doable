@@ -36,9 +36,22 @@ from app.models import (
     SelectionResponse,
     SessionCreatedResponse,
     SessionStatusResponse,
+    StaticSourceWorkspace,
+    WorkspaceApprovalResponse,
+    WorkspaceChangesResponse,
+    WorkspaceDraftRequest,
+    WorkspaceDraftResponse,
+    WorkspacePreviewResponse,
 )
 from app.release_service import ReleaseBlocked, ReleaseService
 from app.sessions import InvalidSessionToken, SessionConflict, SessionNotFound, SessionStore
+from app.workspace_hermes import WorkspaceHermesService
+from app.static_workspace import StaticWorkspaceLoader, StaticWorkspaceUnavailable
+from app.workspace_preview import (
+    WorkspacePreviewInvalid,
+    apply_workspace_patch,
+    build_preview_document,
+)
 
 app = FastAPI(title="Doable Server")
 app.add_middleware(
@@ -50,6 +63,8 @@ app.add_middleware(
 )
 store = SessionStore()
 hermes_service = HermesService()
+workspace_hermes_service = WorkspaceHermesService()
+static_workspace_loader = StaticWorkspaceLoader()
 github_app = GitHubApp()
 release_service = ReleaseService()
 
@@ -134,6 +149,28 @@ async def release_blocked_handler(_, exception: ReleaseBlocked) -> JSONResponse:
     return JSONResponse(
         status_code=exception.status_code,
         content={"code": exception.code, "detail": str(exception)},
+    )
+
+
+@app.exception_handler(StaticWorkspaceUnavailable)
+async def static_workspace_unavailable_handler(
+    _,
+    exception: StaticWorkspaceUnavailable,
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+        content={"detail": str(exception)},
+    )
+
+
+@app.exception_handler(WorkspacePreviewInvalid)
+async def workspace_preview_invalid_handler(
+    _,
+    exception: WorkspacePreviewInvalid,
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+        content={"detail": str(exception)},
     )
 
 
@@ -395,6 +432,111 @@ def reset_workspace(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
+@app.get(
+    "/v1/sessions/{session_id}/workspace/source",
+    response_model=StaticSourceWorkspace,
+)
+async def get_workspace_source(
+    session_id: str,
+    token: SessionToken,
+) -> StaticSourceWorkspace:
+    _, repository = store.get_github_connection(session_id, token)
+    if repository is None:
+        raise SessionConflict(
+            "Select a GitHub repository before loading source")
+    client = GitHubClient(
+        github_app,
+        repository.installation_id,
+        repository.repository_id,
+    )
+    source = await static_workspace_loader.load(
+        client,
+        repository.full_name,
+        repository.default_branch,
+    )
+    return store.set_workspace_source(session_id, token, source)
+
+
+@app.post(
+    "/v1/sessions/{session_id}/workspace/preview",
+    response_model=WorkspacePreviewResponse,
+    response_model_exclude_none=True,
+)
+async def create_workspace_preview(
+    session_id: str,
+    request: PreviewRequest,
+    token: SessionToken,
+) -> WorkspacePreviewResponse:
+    source = store.get_workspace_source(
+        session_id,
+        token,
+        composed=True,
+    )
+    selection = store.get_status(session_id, token).selection
+    patch, response_id = await workspace_hermes_service.preview(
+        request.request,
+        source,
+        selection,
+        session_id,
+    )
+    updated = apply_workspace_patch(source, patch)
+    return WorkspacePreviewResponse(
+        patch=patch,
+        preview_document=build_preview_document(updated),
+        response_id=response_id,
+    )
+
+
+@app.put(
+    "/v1/sessions/{session_id}/workspace/draft",
+    response_model=WorkspaceDraftResponse,
+)
+def put_workspace_draft(
+    session_id: str,
+    draft: WorkspaceDraftRequest,
+    token: SessionToken,
+) -> WorkspaceDraftResponse:
+    return WorkspaceDraftResponse(
+        draft=store.set_workspace_draft(session_id, token, draft)
+    )
+
+
+@app.delete(
+    "/v1/sessions/{session_id}/workspace/draft",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_workspace_draft(
+    session_id: str,
+    token: SessionToken,
+) -> Response:
+    store.clear_workspace_draft(session_id, token)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@app.post(
+    "/v1/sessions/{session_id}/workspace/changes/approve",
+    response_model=WorkspaceApprovalResponse,
+)
+def approve_workspace_change(
+    session_id: str,
+    token: SessionToken,
+) -> WorkspaceApprovalResponse:
+    return store.approve_workspace_draft(session_id, token)
+
+
+@app.get(
+    "/v1/sessions/{session_id}/workspace/changes",
+    response_model=WorkspaceChangesResponse,
+)
+def get_workspace_changes(
+    session_id: str,
+    token: SessionToken,
+) -> WorkspaceChangesResponse:
+    return WorkspaceChangesResponse(
+        changes=store.get_workspace_changes(session_id, token)
+    )
+
+
 @app.post("/v1/sessions/{session_id}/release/verify", response_model=ReleaseVerificationResponse)
 def verify_release(
     session_id: str,
@@ -419,6 +561,25 @@ async def create_release(
     request: ReleaseRequest,
     token: SessionToken,
 ) -> ReleaseResponse:
+    workspace_changes = store.get_workspace_changes(session_id, token)
+    if workspace_changes:
+        workspace_snapshot = store.prepare_workspace_release(
+            session_id,
+            token,
+            request.approval_token,
+            request.changes,
+        )
+        repository = workspace_snapshot.repository
+        client = GitHubClient(
+            github_app,
+            repository.installation_id,
+            repository.repository_id,
+        )
+        return await release_service.release_workspace(
+            workspace_snapshot,
+            client,
+        )
+
     snapshot = store.prepare_release(
         session_id,
         token,

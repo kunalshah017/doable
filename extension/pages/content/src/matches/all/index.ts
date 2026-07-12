@@ -1,4 +1,5 @@
 import { PreviewPatchManager } from './preview-patches';
+import { WorkspacePreviewManager } from './workspace-preview';
 import type {
   ContentMessage,
   ExtensionActionResponse,
@@ -29,6 +30,7 @@ const COMPUTED_STYLE_PROPERTIES = [
 ] as const;
 
 const previewPatches = new PreviewPatchManager(document);
+const workspacePreview = new WorkspacePreviewManager(document);
 let selectionModeActive = false;
 let selectionCapturePending = false;
 let hoverOverlay: HTMLDivElement | null = null;
@@ -232,9 +234,18 @@ const handleContentMessage = (message: ContentMessage) => {
       break;
     case 'DOABLE_CLEAR_PREVIEWS':
       previewPatches.clear();
+      workspacePreview.clear();
+      break;
+    case 'DOABLE_APPLY_WORKSPACE_PREVIEW':
+      workspacePreview.apply(message.preview);
+      break;
+    case 'DOABLE_CLEAR_WORKSPACE_PREVIEW':
+      workspacePreview.clear();
       break;
   }
 };
+
+window.addEventListener('pagehide', () => workspacePreview.clear());
 
 chrome.runtime.onMessage.addListener((message: ExtensionMessage, _sender, sendResponse) => {
   try {

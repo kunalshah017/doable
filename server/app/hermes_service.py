@@ -68,12 +68,18 @@ class HermesService:
         base_url: str | None = None,
         api_key: str | None = None,
         client: httpx.AsyncClient | None = None,
+        timeout: float = 30.0,
     ) -> None:
         self._base_url = (base_url or os.getenv(
             "HERMES_API_URL", "http://127.0.0.1:8642")).rstrip("/")
         self._api_key = api_key if api_key is not None else os.getenv(
             "HERMES_API_KEY")
         self._client = client
+        self._timeout = timeout
+
+    @property
+    def timeout(self) -> float:
+        return self._timeout
 
     async def preview(
         self,
@@ -122,7 +128,7 @@ class HermesService:
                     **kwargs,
                 )
             else:
-                async with httpx.AsyncClient(timeout=30.0) as client:
+                async with httpx.AsyncClient(timeout=self._timeout) as client:
                     response = await client.request(
                         method,
                         f"{self._base_url}{path}",

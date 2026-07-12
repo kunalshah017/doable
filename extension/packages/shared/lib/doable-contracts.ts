@@ -16,6 +16,22 @@ export type SelectedComponent = {
 
 export type PendingSelectedComponent = Omit<SelectedComponent, 'tabId' | 'screenshotDataUrl'>;
 
+export type StaticFilePath = 'index.html' | 'styles.css' | 'script.js';
+
+export type StaticSourceWorkspace = {
+  baseCommitSha: string;
+  files: Partial<Record<StaticFilePath, string>> & { 'index.html': string };
+};
+
+export type WorkspacePatch = {
+  patchId: string;
+  selectionId?: string;
+  baseCommitSha: string;
+  files: Partial<Record<StaticFilePath, string>>;
+  summary: string[];
+  rationale: string;
+};
+
 export type PreviewPatch = {
   patchId: string;
   selectionId: string;
@@ -31,6 +47,22 @@ export type ApprovedChange = {
   selection: SelectedComponent;
   request: string;
   previewPatch: PreviewPatch;
+  beforeScreenshot: string;
+  afterScreenshot: string;
+  qa: {
+    passed: boolean;
+    checks: string[];
+  };
+  approvedAt: string;
+};
+
+export type ApprovedWorkspaceChange = {
+  changeId: string;
+  changeHash: string;
+  request: string;
+  workspacePatch: WorkspacePatch;
+  sourceHashesBefore: Partial<Record<StaticFilePath, string>>;
+  sourceHashesAfter: Partial<Record<StaticFilePath, string>>;
   beforeScreenshot: string;
   afterScreenshot: string;
   qa: {
@@ -75,6 +107,21 @@ export type ClearPreviewsMessage = {
   type: 'DOABLE_CLEAR_PREVIEWS';
 };
 
+export type WorkspacePreviewPayload = {
+  patchId: string;
+  documentHtml: string;
+  summary: string[];
+};
+
+export type ApplyWorkspacePreviewMessage = {
+  type: 'DOABLE_APPLY_WORKSPACE_PREVIEW';
+  preview: WorkspacePreviewPayload;
+};
+
+export type ClearWorkspacePreviewMessage = {
+  type: 'DOABLE_CLEAR_WORKSPACE_PREVIEW';
+};
+
 export type ExtensionActionResponse = {
   ok: boolean;
   error?: string;
@@ -82,7 +129,13 @@ export type ExtensionActionResponse = {
 
 export type SelectionCompletionResponse = SelectedComponentMessage | ExtensionActionResponse;
 
-export type ContentMessage = SelectionModeMessage | ApplyPreviewMessage | UndoPreviewMessage | ClearPreviewsMessage;
+export type ContentMessage =
+  | SelectionModeMessage
+  | ApplyPreviewMessage
+  | UndoPreviewMessage
+  | ClearPreviewsMessage
+  | ApplyWorkspacePreviewMessage
+  | ClearWorkspacePreviewMessage;
 
 export type ExtensionMessage =
   ContentMessage | PendingSelectedComponentMessage | SelectedComponentMessage | SelectionErrorMessage;
