@@ -168,7 +168,8 @@ class SessionStore:
             self._append_event(
                 session_id,
                 "change_approved",
-                {"changeId": change.change_id, "ledgerHash": state.approval.ledger_hash},
+                {"changeId": change.change_id,
+                    "ledgerHash": state.approval.ledger_hash},
             )
 
             return ApprovalResponse(
@@ -203,7 +204,8 @@ class SessionStore:
             self._append_event(
                 session_id,
                 "github_bound",
-                {"installationId": installation.installation_id, "account": installation.account},
+                {"installationId": installation.installation_id,
+                    "account": installation.account},
             )
             return state.github_installation.model_copy(deep=True)
 
@@ -295,7 +297,8 @@ class SessionStore:
             self._append_event(
                 session_id,
                 "github_bound",
-                {"installationId": installation.installation_id, "account": installation.account},
+                {"installationId": installation.installation_id,
+                    "account": installation.account},
             )
             return installation.model_copy(deep=True)
 
@@ -364,7 +367,8 @@ class SessionStore:
             if not self._convex.configured:
                 return []
             try:
-                events = self._convex.query("runEvents:list", {"sessionId": session_id})
+                events = self._convex.query(
+                    "runEvents:list", {"sessionId": session_id})
             except ConvexUnavailable:
                 self._persistence = "memory-fallback"
                 return []
@@ -449,7 +453,8 @@ class SessionStore:
         if not self._convex.configured:
             return None
         try:
-            record = self._convex.query("sessions:get", {"sessionId": session_id})
+            record = self._convex.query(
+                "sessions:get", {"sessionId": session_id})
             if record is None:
                 self._persistence = "convex"
                 return None
@@ -572,7 +577,8 @@ class SessionStore:
                 for change in payload.get("approvedChanges", [])
             ],
             github_installation=(
-                GitHubInstallation.model_validate(payload["githubInstallation"])
+                GitHubInstallation.model_validate(
+                    payload["githubInstallation"])
                 if payload.get("githubInstallation") is not None
                 else None
             ),

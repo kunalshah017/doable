@@ -10,7 +10,8 @@ class ConvexUnavailable(Exception):
 
 class ConvexClient:
     def __init__(self, url: str | None = None, timeout: float = 3.0) -> None:
-        self._url = (url if url is not None else os.getenv("CONVEX_URL", "")).rstrip("/")
+        self._url = (url if url is not None else os.getenv(
+            "CONVEX_URL", "")).rstrip("/")
         self._timeout = timeout
 
     @property
@@ -35,7 +36,8 @@ class ConvexClient:
             response.raise_for_status()
             result = response.json()
         except (httpx.HTTPError, ValueError) as exception:
-            raise ConvexUnavailable("Convex persistence is unavailable") from exception
+            raise ConvexUnavailable(
+                "Convex persistence is unavailable") from exception
         if not isinstance(result, dict) or result.get("status") != "success":
             raise ConvexUnavailable("Convex persistence request failed")
         return result.get("value")
