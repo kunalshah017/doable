@@ -2,6 +2,18 @@
 
 Doable is a Chrome side-panel AI UI engineering agency. It previews reversible HTML and CSS changes in the active browser tab, then uses Hermes to translate only approved changes into a GitHub pull request.
 
+## Full-Page Static Editing
+
+Doable supports source-first changes to root `index.html`, `styles.css`, and `script.js`. It can add, remove, and reorder HTML; add complete CSS rules, media queries, and animations; and add browser JavaScript interactions. Selection is optional context, and full-page edits do not require `data-doable-id` source markers.
+
+HTML, CSS, and JavaScript run in a sandboxed iframe during preview; the deployed page is not mutated. Preview JavaScript cannot use cookies, browser storage, service workers, top-window access, or network APIs. Approval stores exact file contents and the repository base SHA. Release stops with `base_branch_moved` if the default branch changes before Doable writes its deterministic pull-request branch.
+
+Verified demo request:
+
+> Add a fixed mobile reservation bar below 640px with a Reserve a seat button. Style it with the existing red signal color, and make the button open the existing reservation dialog.
+
+The live verification created [doable-demo-site PR #2](https://github.com/kunalshah017/doable-demo-site/pull/2) with exactly one approved commit touching only `index.html` and `styles.css`.
+
 ## Repository
 
 - `extension/` contains the React, Vite, and Manifest V3 browser extension.
