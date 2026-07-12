@@ -30,7 +30,7 @@ describe('background selection routing', () => {
       },
       tabs: {
         captureVisibleTab,
-        query: vi.fn(async () => [{ id: 42 }]),
+        query: vi.fn(async () => [{ id: 42, url: pendingSelection.pageUrl }]),
         sendMessage: vi.fn(),
       },
     });
@@ -89,6 +89,49 @@ describe('background selection routing', () => {
     expect(sendResponse).toHaveBeenCalledWith({
       ok: false,
       error: 'Selection completion failed: Return to the selected tab and try again.',
+    });
+  });
+
+  it.each([
+    ['active tab changes', { id: 99, url: 'https://other.example/' }],
+    ['active tab URL changes', { id: 42, url: 'https://example.com/next' }],
+  ])('discards the screenshot when the %s during capture', async (_case, activeTabAfterCapture) => {
+    let onMessage: Parameters<typeof chrome.runtime.onMessage.addListener>[0] | undefined;
+    const broadcast = vi.fn(async () => undefined);
+    const captureVisibleTab = vi.fn(async () => 'data:image/png;base64,captured');
+    const queryActiveTabs = vi
+      .fn()
+      .mockResolvedValueOnce([{ id: 42, url: pendingSelection.pageUrl }])
+      .mockResolvedValueOnce([activeTabAfterCapture]);
+    vi.stubGlobal('chrome', {
+      runtime: {
+        onMessage: { addListener: vi.fn(listener => (onMessage = listener)) },
+        onConnect: { addListener: vi.fn() },
+        sendMessage: broadcast,
+      },
+      tabs: {
+        captureVisibleTab,
+        query: queryActiveTabs,
+        sendMessage: vi.fn(),
+      },
+    });
+    await import('./index');
+    const sendResponse = vi.fn();
+
+    onMessage?.(
+      { type: 'DOABLE_SELECTED_COMPONENT_PENDING', component: pendingSelection },
+      { tab: { id: 42, windowId: 7, url: pendingSelection.pageUrl } } as chrome.runtime.MessageSender,
+      sendResponse,
+    );
+    await vi.waitFor(() => expect(sendResponse).toHaveBeenCalledOnce());
+
+    expect(queryActiveTabs).toHaveBeenCalledTimes(2);
+    expect(captureVisibleTab).toHaveBeenCalledOnce();
+    expect(broadcast).not.toHaveBeenCalled();
+    expect(sendResponse).toHaveBeenCalledWith({
+      ok: false,
+      error:
+        'Selection completion failed: The active tab or page changed during capture. Select the component again and try again.',
     });
   });
 });

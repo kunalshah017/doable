@@ -15,7 +15,7 @@ const pendingSelection = {
 describe('completeSelection', () => {
   it('derives tab ID and screenshot from the background context', async () => {
     const captureVisibleTab = vi.fn(async () => 'data:image/png;base64,captured');
-    const queryActiveTabs = vi.fn(async () => [{ id: 42 }]);
+    const queryActiveTabs = vi.fn(async () => [{ id: 42, url: pendingSelection.pageUrl }]);
     const callerPayload = Object.assign({}, pendingSelection, {
       tabId: 999,
       screenshotDataUrl: 'data:image/png;base64,caller-supplied',
@@ -29,6 +29,7 @@ describe('completeSelection', () => {
     );
 
     expect(queryActiveTabs).toHaveBeenCalledWith({ active: true, windowId: 7 });
+    expect(queryActiveTabs).toHaveBeenCalledTimes(2);
     expect(captureVisibleTab).toHaveBeenCalledWith(7, { format: 'png' });
     expect(result).toEqual({
       type: 'DOABLE_SELECTED_COMPONENT',

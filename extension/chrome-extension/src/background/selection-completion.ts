@@ -12,7 +12,7 @@ type SelectionSender = {
 };
 
 type CaptureVisibleTab = (windowId: number | undefined, options: { format: 'png' }) => Promise<string>;
-type QueryActiveTabs = (queryInfo: { active: true; windowId: number }) => Promise<Array<{ id?: number }>>;
+type QueryActiveTabs = (queryInfo: { active: true; windowId: number }) => Promise<Array<{ id?: number; url?: string }>>;
 
 export const completeSelection = async (
   selection: PendingSelectedComponent,
@@ -45,6 +45,15 @@ export const completeSelection = async (
     }
 
     const screenshotDataUrl = await captureVisibleTab(windowId, { format: 'png' });
+    const [activeTabAfterCapture] = await queryActiveTabs({ active: true, windowId });
+    if (activeTabAfterCapture?.id !== tabId || activeTabAfterCapture.url !== selection.pageUrl) {
+      return {
+        ok: false,
+        error:
+          'Selection completion failed: The active tab or page changed during capture. Select the component again and try again.',
+      };
+    }
+
     return {
       type: 'DOABLE_SELECTED_COMPONENT',
       component: {
