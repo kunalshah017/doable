@@ -53,6 +53,14 @@ class ReleaseSnapshot:
     repository: RepositoryBinding
 
 
+@dataclass(frozen=True, slots=True)
+class WorkspaceReleaseSnapshot:
+    ledger_hash: str
+    base_commit_sha: str
+    changes: tuple[ApprovedWorkspaceChange, ...]
+    repository: RepositoryBinding
+
+
 @dataclass(slots=True)
 class GitHubInstallAttempt:
     nonce: str
@@ -609,6 +617,52 @@ class SessionStore:
                 ledger_hash=current_hash,
                 changes=tuple(
                     change.model_copy(deep=True) for change in state.approved_changes
+                ),
+                repository=state.repository.model_copy(deep=True),
+            )
+
+    def prepare_workspace_release(
+        self,
+        session_id: str,
+        session_token: str,
+        approval_token: str,
+        change_ids: list[str],
+    ) -> WorkspaceReleaseSnapshot:
+        with self._lock:
+            state = self._authenticated(session_id, session_token)
+            if state.repository is None:
+                raise SessionConflict(
+                    "Select a GitHub repository before release")
+            if state.workspace_source is None:
+                raise SessionConflict(
+                    "Load repository source before release")
+            if change_ids != [
+                change.change_id
+                for change in state.approved_workspace_changes
+            ]:
+                raise SessionConflict(
+                    "Release changes must match the approved workspace ledger in order"
+                )
+
+            references = [
+                ApprovedChangeReference(
+                    change_id=change.change_id,
+                    change_hash=change.change_hash,
+                )
+                for change in state.approved_workspace_changes
+            ]
+            current_hash = verify_approval(
+                state.workspace_approval,
+                approval_token,
+                references,
+                state.approved_workspace_changes,
+            )
+            return WorkspaceReleaseSnapshot(
+                ledger_hash=current_hash,
+                base_commit_sha=state.workspace_source.base_commit_sha,
+                changes=tuple(
+                    change.model_copy(deep=True)
+                    for change in state.approved_workspace_changes
                 ),
                 repository=state.repository.model_copy(deep=True),
             )

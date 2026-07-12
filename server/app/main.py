@@ -561,6 +561,25 @@ async def create_release(
     request: ReleaseRequest,
     token: SessionToken,
 ) -> ReleaseResponse:
+    workspace_changes = store.get_workspace_changes(session_id, token)
+    if workspace_changes:
+        workspace_snapshot = store.prepare_workspace_release(
+            session_id,
+            token,
+            request.approval_token,
+            request.changes,
+        )
+        repository = workspace_snapshot.repository
+        client = GitHubClient(
+            github_app,
+            repository.installation_id,
+            repository.repository_id,
+        )
+        return await release_service.release_workspace(
+            workspace_snapshot,
+            client,
+        )
+
     snapshot = store.prepare_release(
         session_id,
         token,

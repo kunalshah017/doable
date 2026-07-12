@@ -10,7 +10,9 @@ from tinycss2.ast import Declaration, ParseError, QualifiedRule
 from app.convex_client import ConvexClient, ConvexUnavailable
 from app.github_client import GitHubClient
 from app.models import ApprovedChange, ReleaseResponse, RepositoryBinding
-from app.sessions import ReleaseSnapshot
+from app.sessions import ReleaseSnapshot, WorkspaceReleaseSnapshot
+
+ReleaseSnapshotRecord = ReleaseSnapshot | WorkspaceReleaseSnapshot
 
 
 class ReleaseBlocked(Exception):
@@ -373,9 +375,37 @@ class ReleaseService:
             self._persist(snapshot, repository, result)
             return result
 
+    async def release_workspace(
+        self,
+        snapshot: WorkspaceReleaseSnapshot,
+        client: GitHubClient,
+    ) -> ReleaseResponse:
+        repository = snapshot.repository
+        result_key = (
+            repository.installation_id,
+            repository.repository_id,
+            snapshot.ledger_hash,
+        )
+        persisted = self._get_persisted(snapshot, repository)
+        if persisted is not None:
+            self._results[result_key] = persisted.model_copy(deep=True)
+            return persisted
+        cached = self._results.get(result_key)
+        if cached is not None:
+            return cached.model_copy(deep=True)
+
+        async with self._lock:
+            cached = self._results.get(result_key)
+            if cached is not None:
+                return cached.model_copy(deep=True)
+            result = await self._release_workspace(snapshot, repository, client)
+            self._results[result_key] = result.model_copy(deep=True)
+            self._persist(snapshot, repository, result)
+            return result
+
     def _get_persisted(
         self,
-        snapshot: ReleaseSnapshot,
+        snapshot: ReleaseSnapshotRecord,
         repository: RepositoryBinding,
     ) -> ReleaseResponse | None:
         if not self._convex.configured:
@@ -398,7 +428,7 @@ class ReleaseService:
 
     def _persist(
         self,
-        snapshot: ReleaseSnapshot,
+        snapshot: ReleaseSnapshotRecord,
         repository: RepositoryBinding,
         result: ReleaseResponse,
     ) -> None:
@@ -499,8 +529,100 @@ class ReleaseService:
             ledger_hash=snapshot.ledger_hash,
         )
 
+    async def _release_workspace(
+        self,
+        snapshot: WorkspaceReleaseSnapshot,
+        repository: RepositoryBinding,
+        client: GitHubClient,
+    ) -> ReleaseResponse:
+        base_sha = await client.get_ref(
+            repository.full_name,
+            repository.default_branch,
+        )
+        if base_sha != snapshot.base_commit_sha:
+            raise ReleaseBlocked(
+                "base_branch_moved",
+                "The repository default branch moved after workspace approval",
+                status_code=409,
+            )
+        base_commit = await client.get_commit(repository.full_name, base_sha)
+
+        parent_sha = base_sha
+        tree_sha = base_commit["tree_sha"]
+        commit_shas: list[str] = []
+        for change in snapshot.changes:
+            tree_sha = await client.create_tree(
+                repository.full_name,
+                tree_sha,
+                dict(change.workspace_patch.files),
+            )
+            parent_sha = await client.create_commit(
+                repository.full_name,
+                f"Doable: {change.request.strip()[:72]}",
+                tree_sha,
+                parent_sha,
+                change.approved_at.isoformat(),
+            )
+            commit_shas.append(parent_sha)
+
+        current_base_sha = await client.get_ref(
+            repository.full_name,
+            repository.default_branch,
+        )
+        if current_base_sha != base_sha:
+            raise ReleaseBlocked(
+                "base_branch_moved",
+                "The repository default branch moved during release preparation",
+                status_code=409,
+            )
+
+        branch = f"doable/{snapshot.ledger_hash[:12]}"
+        final_commit_sha = commit_shas[-1]
+        existing_ref = await client.get_optional_ref(
+            repository.full_name,
+            branch,
+        )
+        if existing_ref is None:
+            await client.create_ref(
+                repository.full_name,
+                branch,
+                final_commit_sha,
+            )
+        elif existing_ref != final_commit_sha:
+            raise ReleaseBlocked(
+                "release_branch_conflict",
+                "The deterministic release branch exists at a different commit",
+                status_code=409,
+            )
+
+        existing_pull_request = await client.find_open_pull_request(
+            repository.full_name,
+            branch,
+            repository.default_branch,
+        )
+        if existing_pull_request is None:
+            pull_request_number, pull_request_url = await client.create_pull_request(
+                repository.full_name,
+                "Apply approved Doable changes",
+                self._pull_request_body(snapshot, commit_shas),
+                branch,
+                repository.default_branch,
+            )
+        else:
+            pull_request_number, pull_request_url = existing_pull_request
+        return ReleaseResponse(
+            pull_request_url=pull_request_url,
+            pull_request_number=pull_request_number,
+            branch=branch,
+            commit_shas=commit_shas,
+            ledger_hash=snapshot.ledger_hash,
+        )
+
     @staticmethod
-    def _pull_request_body(snapshot: ReleaseSnapshot, commit_shas: list[str]) -> str:
+    def _pull_request_body(
+        snapshot: ReleaseSnapshotRecord,
+        commit_shas: list[str],
+    ) -> str:
         lines = [
             "## Approved changes",
             "",

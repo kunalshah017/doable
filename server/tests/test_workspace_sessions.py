@@ -94,6 +94,14 @@ def test_workspace_approvals_compose_in_order_and_reset_preserves_repository() -
         "index.html": "<main>One</main>",
         "styles.css": "main { color: green; }",
     }
+    release = store.prepare_workspace_release(
+        created.session_id,
+        created.session_token,
+        second_approval.approval_token,
+        [change.change_id for change in changes],
+    )
+    assert release.base_commit_sha == "a" * 40
+    assert release.ledger_hash == second_approval.ledger_hash
 
     store.reset_workspace(created.session_id, created.session_token)
 
