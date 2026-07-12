@@ -1,5 +1,6 @@
 import '@src/SidePanel.css';
 import { DoableServerApi, SERVER_BASE_URL, displayError } from '@src/server-api';
+import { isRequestInputDisabled } from '@src/request-state';
 import { useEffect, useRef, useState } from 'react';
 import type {
   ApprovedWorkspaceChange,
@@ -524,7 +525,11 @@ const SidePanel = () => {
               placeholder="Make this call to action clearer and more prominent."
               rows={4}
               maxLength={4000}
-              disabled={!workspaceSource || draft !== null || busy !== null}
+              disabled={isRequestInputDisabled({
+                hasWorkspaceSource: workspaceSource !== null,
+                hasDraft: draft !== null,
+                isBusy: busy !== null,
+              })}
             />
             <button
               className="primary full-width"
