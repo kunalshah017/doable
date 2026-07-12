@@ -56,6 +56,22 @@ export type ApprovedChange = {
   approvedAt: string;
 };
 
+export type ApprovedWorkspaceChange = {
+  changeId: string;
+  changeHash: string;
+  request: string;
+  workspacePatch: WorkspacePatch;
+  sourceHashesBefore: Partial<Record<StaticFilePath, string>>;
+  sourceHashesAfter: Partial<Record<StaticFilePath, string>>;
+  beforeScreenshot: string;
+  afterScreenshot: string;
+  qa: {
+    passed: boolean;
+    checks: string[];
+  };
+  approvedAt: string;
+};
+
 export type SelectionModeMessage = {
   type: 'DOABLE_SET_SELECTION_MODE';
   enabled: boolean;

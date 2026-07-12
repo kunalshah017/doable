@@ -1,4 +1,11 @@
-import type { ApprovedChange, PreviewPatch, SelectedComponent } from '@extension/shared';
+import type {
+  ApprovedChange,
+  ApprovedWorkspaceChange,
+  PreviewPatch,
+  SelectedComponent,
+  StaticSourceWorkspace,
+  WorkspacePatch,
+} from '@extension/shared';
 
 const DEFAULT_SERVER_URL = 'http://127.0.0.1:8787';
 const SESSION_KEYS = ['sessionId', 'sessionToken'] as const;
@@ -38,6 +45,22 @@ type HermesStatus = {
 type PreviewResponse = {
   patch: PreviewPatch;
   responseId?: string;
+};
+
+type WorkspacePreviewResponse = {
+  patch: WorkspacePatch;
+  previewDocument: string;
+  responseId?: string;
+};
+
+type WorkspaceChangesResponse = {
+  changes: ApprovedWorkspaceChange[];
+};
+
+type WorkspaceApprovalResponse = {
+  change: ApprovedWorkspaceChange;
+  approvalToken: string;
+  ledgerHash: string;
 };
 
 type ChangesResponse = {
@@ -169,6 +192,49 @@ class DoableServerApi {
 
   async getChanges() {
     return (await this.sessionRequest<ChangesResponse>('/changes')).changes;
+  }
+
+  async getWorkspaceSource() {
+    return this.sessionRequest<StaticSourceWorkspace>('/workspace/source');
+  }
+
+  async previewWorkspace(request: string) {
+    return this.sessionRequest<WorkspacePreviewResponse>('/workspace/preview', {
+      method: 'POST',
+      body: JSON.stringify({ request }),
+    });
+  }
+
+  async confirmWorkspacePreview(
+    request: string,
+    patch: WorkspacePatch,
+    beforeScreenshot: string,
+    afterScreenshot: string,
+  ) {
+    return this.sessionRequest('/workspace/draft', {
+      method: 'PUT',
+      body: JSON.stringify({
+        request,
+        patch,
+        beforeScreenshot,
+        afterScreenshot,
+        qa: { passed: true, checks: ['sandbox_preview_applied'] },
+      }),
+    });
+  }
+
+  async approveWorkspaceChange() {
+    return this.sessionRequest<WorkspaceApprovalResponse>('/workspace/changes/approve', {
+      method: 'POST',
+    });
+  }
+
+  async getWorkspaceChanges() {
+    return (await this.sessionRequest<WorkspaceChangesResponse>('/workspace/changes')).changes;
+  }
+
+  async deleteWorkspaceDraft() {
+    await this.sessionRequest<void>('/workspace/draft', { method: 'DELETE' });
   }
 
   async getGitHubStatus() {
