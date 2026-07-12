@@ -39,6 +39,7 @@ from app.models import (
 )
 from app.release_service import ReleaseBlocked, ReleaseService
 from app.sessions import InvalidSessionToken, SessionConflict, SessionNotFound, SessionStore
+from app.workspace_hermes import WorkspaceHermesService
 
 app = FastAPI(title="Doable Server")
 app.add_middleware(
@@ -50,6 +51,7 @@ app.add_middleware(
 )
 store = SessionStore()
 hermes_service = HermesService()
+workspace_hermes_service = WorkspaceHermesService()
 github_app = GitHubApp()
 release_service = ReleaseService()
 
