@@ -129,6 +129,8 @@ class WorkspaceHermesService(HermesService):
         payload["baseCommitSha"] = workspace.base_commit_sha
         if selection is not None:
             payload["selectionId"] = selection.selection_id
+        if isinstance(payload.get("summary"), str) and payload["summary"].strip():
+            payload["summary"] = [payload["summary"].strip()]
         if not isinstance(payload.get("rationale"), str) or not payload[
             "rationale"
         ].strip():

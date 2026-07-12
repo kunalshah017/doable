@@ -83,3 +83,29 @@ async def test_hermes_rejects_an_unsupported_file() -> None:
 
         with pytest.raises(HermesInvalidResponse, match="invalid workspace patch"):
             await service.preview("Change dependencies", workspace(), None, "session-1")
+
+
+@pytest.mark.asyncio
+async def test_hermes_normalizes_a_single_summary_string() -> None:
+    response = {
+        "output_text": json.dumps(
+            {
+                "files": {"styles.css": "main { color: green; }"},
+                "summary": "Changed the main color",
+                "rationale": "Matches the request",
+            }
+        ),
+    }
+
+    async def respond(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=response)
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(respond),
+    ) as client:
+        service = WorkspaceHermesService("http://hermes.test", "key", client)
+
+        patch, _ = await service.preview("Change color", workspace(), None, "session-1")
+
+    assert patch.summary == ["Changed the main color"]
+
