@@ -133,12 +133,37 @@ class DraftState(DraftRequest):
     selection_id: str
 
 
+class WorkspaceDraftRequest(APIModel):
+    request: str = Field(min_length=1, max_length=4_000)
+    patch: WorkspacePatch
+    before_screenshot: str
+    after_screenshot: str
+    qa: QAResult = Field(default_factory=QAResult)
+
+
+class WorkspaceDraftState(WorkspaceDraftRequest):
+    pass
+
+
 class ApprovedChange(APIModel):
     change_id: str
     change_hash: str
     selection: SelectedComponent
     request: str
     preview_patch: PreviewPatch
+    before_screenshot: str
+    after_screenshot: str
+    qa: QAResult
+    approved_at: datetime
+
+
+class ApprovedWorkspaceChange(APIModel):
+    change_id: str
+    change_hash: str
+    request: str
+    workspace_patch: WorkspacePatch
+    source_hashes_before: dict[StaticFilePath, str]
+    source_hashes_after: dict[StaticFilePath, str]
     before_screenshot: str
     after_screenshot: str
     qa: QAResult
@@ -222,6 +247,26 @@ class ApprovalResponse(APIModel):
     change: ApprovedChange
     approval_token: str
     ledger_hash: str
+
+
+class WorkspaceApprovalResponse(APIModel):
+    change: ApprovedWorkspaceChange
+    approval_token: str
+    ledger_hash: str
+
+
+class WorkspaceChangesResponse(APIModel):
+    changes: list[ApprovedWorkspaceChange]
+
+
+class WorkspaceDraftResponse(APIModel):
+    draft: WorkspaceDraftState
+
+
+class WorkspacePreviewResponse(APIModel):
+    patch: WorkspacePatch
+    preview_document: str
+    response_id: str | None = None
 
 
 class ChangesResponse(APIModel):
