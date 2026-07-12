@@ -91,6 +91,21 @@ export type ClearPreviewsMessage = {
   type: 'DOABLE_CLEAR_PREVIEWS';
 };
 
+export type WorkspacePreviewPayload = {
+  patchId: string;
+  documentHtml: string;
+  summary: string[];
+};
+
+export type ApplyWorkspacePreviewMessage = {
+  type: 'DOABLE_APPLY_WORKSPACE_PREVIEW';
+  preview: WorkspacePreviewPayload;
+};
+
+export type ClearWorkspacePreviewMessage = {
+  type: 'DOABLE_CLEAR_WORKSPACE_PREVIEW';
+};
+
 export type ExtensionActionResponse = {
   ok: boolean;
   error?: string;
@@ -98,7 +113,13 @@ export type ExtensionActionResponse = {
 
 export type SelectionCompletionResponse = SelectedComponentMessage | ExtensionActionResponse;
 
-export type ContentMessage = SelectionModeMessage | ApplyPreviewMessage | UndoPreviewMessage | ClearPreviewsMessage;
+export type ContentMessage =
+  | SelectionModeMessage
+  | ApplyPreviewMessage
+  | UndoPreviewMessage
+  | ClearPreviewsMessage
+  | ApplyWorkspacePreviewMessage
+  | ClearWorkspacePreviewMessage;
 
 export type ExtensionMessage =
   ContentMessage | PendingSelectedComponentMessage | SelectedComponentMessage | SelectionErrorMessage;
