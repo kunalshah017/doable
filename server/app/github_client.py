@@ -103,6 +103,19 @@ class GitHubClient:
             raise GitHubAPIError(
                 f"Repository file is not valid UTF-8: {path}") from exception
 
+    async def read_optional_file(
+        self,
+        full_name: str,
+        path: str,
+        ref: str,
+    ) -> str | None:
+        try:
+            return await self.read_file(full_name, path, ref)
+        except GitHubAPIError as exception:
+            if exception.status_code == 404:
+                return None
+            raise
+
     async def create_tree(
         self,
         full_name: str,
