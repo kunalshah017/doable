@@ -5,6 +5,8 @@ import { FadeUp, MIcon, PrimaryButton } from './landing-primitives';
 
 const VIDEO_SRC = 'https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260314_131748_f2ca2a28-fed7-44c8-b9a9-bd9acdd5ec31.mp4';
 const GRASS_SRC = 'https://res.cloudinary.com/dy5er7kv5/image/upload/q_auto/f_auto/v1780586778/cta-bg_mlwy5s.png';
+const EXTENSION_DOWNLOAD_URL =
+  'https://github.com/kunalshah017/doable/releases/download/extension-latest/doable-chrome.zip';
 const HERMES_LOGO_SRC = 'https://cdn.jsdelivr.net/gh/selfhst/icons/png/hermes-agent.png';
 const SUPERMEMORY_LOGO_SRC = 'https://img.logo.dev/supermemory.ai?token=pk_BShsdiwDTuyRVVBW5GadOg&format=webp&retina=true';
 const WISPR_LOGO_SRC = 'https://img.logo.dev/wisprflow.ai?token=pk_BShsdiwDTuyRVVBW5GadOg&format=webp&retina=true';
@@ -151,18 +153,20 @@ export const CtaSection = () => {
     <section ref={sectionRef} id="top" className="hero-stage relative w-full overflow-hidden" style={{ background: 'linear-gradient(to bottom, #10161a 0%, #14191E 100%)' }}>
       <div className="signal-field pointer-events-none absolute inset-0 opacity-55" aria-hidden="true" />
       <div className="relative z-40 mx-auto max-w-[1240px] px-6 pt-6 xl:px-10 xl:pt-8">
-        <nav className="liquid-glass flex items-center justify-between rounded-full px-5 py-3" aria-label="Primary navigation">
+        <nav className="liquid-glass flex items-center justify-between rounded-full px-4 py-3 sm:px-5" aria-label="Primary navigation">
           <a href="#top" className="display-face inline-flex items-center gap-2 text-lg font-bold tracking-[0.08em] text-[#f4f1ea]">
             <span className="grid size-6 place-items-center rounded-md bg-[#ff5c4d] text-xs text-[#14191e]">D</span>
             doable
           </a>
-          <div className="flex items-center gap-6 text-sm text-white/60">
+          <div className="hidden items-center gap-6 text-sm text-white/60 md:flex">
             <a className="transition-colors hover:text-white" href="#how-it-works">How it works</a>
             <a className="transition-colors hover:text-white" href="#control">Why managers use it</a>
           </div>
-          <PrimaryButton as="button" size="sm">Join the demo</PrimaryButton>
+          <PrimaryButton aria-label="Download for Chrome" href={EXTENSION_DOWNLOAD_URL} size="sm" className="px-4 sm:px-5">
+            <span aria-hidden="true"><span className="sm:hidden">Download</span><span className="hidden sm:inline">Download for Chrome</span></span>
+          </PrimaryButton>
         </nav>
-        <div className="grid grid-cols-2 items-start gap-8 pt-24 xl:pt-36">
+        <div className="grid grid-cols-1 items-start gap-8 pt-24 lg:grid-cols-2 xl:pt-36">
           <div className="relative z-40 max-w-[400px] xl:-mt-8 xl:max-w-[440px]">
             <FadeUp>
               <h1 className="display-face text-5xl font-bold leading-[0.95] tracking-normal text-[#f4f1ea] xl:text-6xl">
@@ -173,14 +177,17 @@ export const CtaSection = () => {
               <p className="mt-6 max-w-[400px] text-lg leading-[1.5] text-landing-text">Request a change, review it live, then approve the pull request.</p>
             </FadeUp>
             <FadeUp className="mt-10" delay={0.2}>
-              <PrimaryButton as="button">Join the demo</PrimaryButton>
+              <PrimaryButton href={EXTENSION_DOWNLOAD_URL}>Download for Chrome</PrimaryButton>
             </FadeUp>
-            <p className="mt-7 text-xs text-white/45">No repository setup. No production changes until you say so.</p>
+            <p className="mt-5 max-w-[390px] text-xs leading-5 text-white/50">
+              Extract the ZIP, open <span className="font-mono text-white/70">chrome://extensions</span>, enable
+              Developer mode, then choose <strong className="font-medium text-white/70">Load unpacked</strong>.
+            </p>
           </div>
         </div>
       </div>
       <motion.div
-        className="hero-dashboard absolute z-10"
+        className="hero-dashboard absolute z-10 hidden lg:block"
         style={{ y: dashboardY }}>
         <CtaDashboardMock />
       </motion.div>

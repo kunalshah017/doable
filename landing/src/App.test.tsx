@@ -22,6 +22,12 @@ describe('App', () => {
       'src',
       'https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260514_102933_4e8f73b5-775a-4179-b2fb-472f59063dcd.mp4',
     );
-    expect(screen.getAllByText('Join the demo').length).toBeGreaterThan(0);
+    const downloadLinks = screen.getAllByRole('link', { name: 'Download for Chrome' });
+    expect(downloadLinks.length).toBeGreaterThan(0);
+    expect(downloadLinks[0]).toHaveAttribute(
+      'href',
+      'https://github.com/kunalshah017/doable/releases/download/extension-latest/doable-chrome.zip',
+    );
+    expect(screen.getByText('Load unpacked')).toBeInTheDocument();
   });
 });
