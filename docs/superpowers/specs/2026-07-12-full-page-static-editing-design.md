@@ -37,9 +37,9 @@ The selected live element remains useful context for the manager request, but it
 type StaticSourceWorkspace = {
   baseCommitSha: string;
   files: {
-    'index.html': string;
-    'styles.css'?: string;
-    'script.js'?: string;
+    "index.html": string;
+    "styles.css"?: string;
+    "script.js"?: string;
   };
 };
 
@@ -47,7 +47,7 @@ type WorkspacePatch = {
   patchId: string;
   selectionId?: string;
   baseCommitSha: string;
-  files: Partial<Record<'index.html' | 'styles.css' | 'script.js', string>>;
+  files: Partial<Record<"index.html" | "styles.css" | "script.js", string>>;
   summary: string[];
   rationale: string;
 };
