@@ -2,6 +2,7 @@ import type { ApprovedChange, PreviewPatch, SelectedComponent } from '@extension
 
 const DEFAULT_SERVER_URL = 'http://127.0.0.1:8787';
 const SESSION_KEYS = ['sessionId', 'sessionToken'] as const;
+const APPROVAL_KEY_PREFIX = 'doableApproval:';
 
 const SERVER_BASE_URL = (process.env['CEB_SERVER_URL'] || DEFAULT_SERVER_URL).replace(/\/$/, '');
 
@@ -46,6 +47,44 @@ type ChangesResponse = {
 type ApprovalResponse = {
   change: ApprovedChange;
   approvalToken: string;
+  ledgerHash: string;
+};
+
+type RepositorySummary = {
+  repositoryId: number;
+  fullName: string;
+  defaultBranch: string;
+  private: boolean;
+  htmlUrl: string;
+};
+
+type RepositoryBinding = RepositorySummary & {
+  installationId: number;
+  account: string;
+};
+
+type GitHubStatus = {
+  configured: boolean;
+  detail?: string;
+  connected: boolean;
+  account?: string;
+  repository?: RepositoryBinding;
+};
+
+type GitHubRepositoriesResponse = {
+  repositories: RepositorySummary[];
+};
+
+type ReleaseApproval = {
+  approvalToken: string;
+  changeIds: string[];
+};
+
+type ReleaseResponse = {
+  pullRequestUrl: string;
+  pullRequestNumber: number;
+  branch: string;
+  commitShas: string[];
   ledgerHash: string;
 };
 
@@ -131,6 +170,61 @@ class DoableServerApi {
     return (await this.sessionRequest<ChangesResponse>('/changes')).changes;
   }
 
+  async getGitHubStatus() {
+    return this.authenticatedRequest<GitHubStatus>(
+      session => `/v1/github/status?sessionId=${encodeURIComponent(session.sessionId)}`,
+    );
+  }
+
+  async startGitHubInstall() {
+    return this.sessionRequest<{ installUrl: string }>('/github/install/start', { method: 'POST' });
+  }
+
+  async listGitHubRepositories() {
+    return (await this.sessionRequest<GitHubRepositoriesResponse>('/github/repositories')).repositories;
+  }
+
+  async bindGitHubRepository(repositoryId: number) {
+    return this.sessionRequest<RepositoryBinding>('/github/repository', {
+      method: 'PUT',
+      body: JSON.stringify({ repositoryId }),
+    });
+  }
+
+  async disconnectGitHubRepository() {
+    await this.sessionRequest<void>('/github/repository', { method: 'DELETE' });
+  }
+
+  async release(approvalToken: string, changes: string[]) {
+    return this.sessionRequest<ReleaseResponse>('/release', {
+      method: 'POST',
+      body: JSON.stringify({ approvalToken, changes }),
+    });
+  }
+
+  async saveReleaseApproval(approvalToken: string, changeIds: string[]) {
+    const session = await this.ensureSession();
+    const approval: ReleaseApproval = { approvalToken, changeIds };
+    await chrome.storage.local.set({ [`${APPROVAL_KEY_PREFIX}${session.sessionId}`]: approval });
+    return approval;
+  }
+
+  async getReleaseApproval() {
+    const session = await this.ensureSession();
+    const key = `${APPROVAL_KEY_PREFIX}${session.sessionId}`;
+    const saved = (await chrome.storage.local.get(key))[key];
+    if (
+      !saved ||
+      typeof saved !== 'object' ||
+      typeof saved.approvalToken !== 'string' ||
+      !Array.isArray(saved.changeIds) ||
+      !saved.changeIds.every((changeId: unknown) => typeof changeId === 'string')
+    ) {
+      return null;
+    }
+    return saved as ReleaseApproval;
+  }
+
   async deleteDraft() {
     await this.sessionRequest<void>('/draft', { method: 'DELETE' });
   }
@@ -150,9 +244,21 @@ class DoableServerApi {
   }
 
   private async sessionRequest<T>(path: string, init?: RequestInit, retryUnauthorized = true): Promise<T> {
+    return this.authenticatedRequest<T>(
+      session => `/v1/sessions/${encodeURIComponent(session.sessionId)}${path}`,
+      init,
+      retryUnauthorized,
+    );
+  }
+
+  private async authenticatedRequest<T>(
+    path: (session: SessionCredentials) => string,
+    init?: RequestInit,
+    retryUnauthorized = true,
+  ): Promise<T> {
     const session = await this.ensureSession();
     try {
-      const response = await fetch(`${SERVER_BASE_URL}/v1/sessions/${encodeURIComponent(session.sessionId)}${path}`, {
+      const response = await fetch(`${SERVER_BASE_URL}${path(session)}`, {
         ...init,
         headers: {
           'Content-Type': 'application/json',
@@ -162,7 +268,7 @@ class DoableServerApi {
       });
       if (response.status === 403 && retryUnauthorized) {
         await this.clearSession();
-        return this.sessionRequest<T>(path, init, false);
+        return this.authenticatedRequest<T>(path, init, false);
       }
       if (!response.ok) throw await responseError(response);
       if (response.status === 204) return undefined as T;
@@ -184,6 +290,10 @@ class DoableServerApi {
   }
 
   private async clearSession() {
+    const saved = await chrome.storage.local.get(SESSION_KEYS);
+    if (typeof saved.sessionId === 'string') {
+      await chrome.storage.local.remove(`${APPROVAL_KEY_PREFIX}${saved.sessionId}`);
+    }
     await chrome.storage.local.remove([...SESSION_KEYS]);
   }
 }
@@ -194,4 +304,13 @@ const displayError = (error: unknown) =>
     : 'Something went wrong. Retry the action.';
 
 export { DoableServerApi, SERVER_BASE_URL, ServerApiError, displayError };
-export type { HermesStatus, SessionDraft, SessionStatus };
+export type {
+  GitHubStatus,
+  HermesStatus,
+  ReleaseApproval,
+  ReleaseResponse,
+  RepositoryBinding,
+  RepositorySummary,
+  SessionDraft,
+  SessionStatus,
+};
