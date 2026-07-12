@@ -26,7 +26,8 @@ doable/
     app/hermes_service.py            # Hermes manager and specialist orchestration
     app/memory_policy.py             # Supermemory scope, consent, redaction
     app/ledger.py                    # Immutable approval hashes
-    app/github_client.py             # GitHub OAuth and Git Data API
+    app/github_app.py                # GitHub App installation and token lifecycle
+    app/github_client.py             # Repository and Git Data API operations
     app/release_service.py           # Approved browser change to source patch
     tests/                           # Server unit and integration tests
   hermes-plugin/                     # Narrow Doable tools loaded by Hermes
@@ -320,7 +321,7 @@ Run: `git add server hermes-plugin config docs/supermemory-setup.md && git commi
 
 - [ ] **Step 1: Write failing operator-flow tests**
 
-Test that release is disabled with no approved changes, approval adds exactly one ledger item, undo removes only the active draft, memory defaults off, and server unavailability keeps existing browser previews intact.
+Test that release is disabled with no approved changes, approval adds exactly one ledger item, undo removes only the active draft, memory defaults off, GitHub starts disconnected, and server unavailability keeps existing browser previews intact.
 
 - [ ] **Step 2: Run the side-panel tests and verify RED**
 
@@ -330,7 +331,7 @@ Expected: FAIL because the starter panel does not implement Doable.
 
 - [ ] **Step 3: Implement the side panel**
 
-Build, in order: connection status, select-element control, selected component summary, Hermes chat and trace, preview review actions, approved-change ledger, opt-in memory status, clear-memory action, release button, and PR result. The extension speaks only to the Doable server.
+Build, in order: Connect GitHub action, connected-account status, connected-repository picker and disconnect action, website connection status, select-element control, selected component summary, Hermes chat and trace, preview review actions, approved-change ledger, opt-in memory status, clear-memory action, release button, and PR result. `Connect GitHub` requests an installation URL from the Doable server and opens it with `chrome.tabs.create`; credentials never enter extension state. The extension speaks only to the Doable server.
 
 - [ ] **Step 4: Verify UI tests and the production bundle**
 
@@ -346,37 +347,54 @@ Run: `git add extension && git commit -m "feat: add doable side panel"`
 
 **Files:**
 
+- Create: `server/app/github_app.py`
 - Create: `server/app/github_client.py`
 - Create: `server/app/release_service.py`
 - Modify: `server/app/main.py`
+- Test: `server/tests/test_github_app.py`
 - Test: `server/tests/test_release_service.py`
 - Test: `server/tests/test_github_client.py`
 
 - [ ] **Step 1: Write failing release tests**
 
-Use static HTML/CSS strings as fixtures inside tests, not a nested demo repository. Test exact `data-doable-id` mapping, text and CSS translation, duplicate/absent marker rejection, and zero GitHub writes when approval is invalid.
+Use static HTML/CSS strings as fixtures inside tests, not a nested demo repository. Test exact `data-doable-id` mapping, text and CSS translation, duplicate/absent marker rejection, and zero GitHub writes when approval is invalid. Test signed installation state, callback state rejection, repository allowlisting, one-hour token non-persistence, disconnect behavior, default-branch movement, idempotent release retries, and one ordered commit per approved ledger entry.
 
 - [ ] **Step 2: Run release tests and verify RED**
 
-Run: `cd server && uv run pytest tests/test_release_service.py tests/test_github_client.py -q`
+Run: `cd server && uv run pytest tests/test_github_app.py tests/test_release_service.py tests/test_github_client.py -q`
 
-Expected: FAIL because release translation and GitHub operations do not exist.
+Expected: FAIL because GitHub App connection, release translation, and GitHub operations do not exist.
 
 - [ ] **Step 3: Implement deterministic buildathon translation**
 
 For v1, inspect only the connected repository's `index.html` and `styles.css`. Require exactly one matching `data-doable-id`. Apply approved text, non-event attributes, and CSS declarations only. Return `source_mapping_not_found`, `source_mapping_ambiguous`, or `unsupported_change` instead of guessing.
 
-- [ ] **Step 4: Implement server-side GitHub release**
+- [ ] **Step 4: Implement GitHub App connection**
 
-Complete GitHub OAuth on the server. Use Git Data API calls to read the default branch, create a `doable/<timestamp>` branch, blobs, tree, and commit, update the branch ref, then open a PR. Never merge automatically. Include approved change IDs, QA results, and memory-derived conventions used in the PR body.
+Register a GitHub App with **Metadata: read**, **Contents: read and write**, and **Pull requests: read and write**. Keep webhooks disabled for v1. Implement:
 
-- [ ] **Step 5: Verify release behavior**
+- `POST /v1/github/install/start` to create a short-lived signed state bound to the Doable session and return the installation URL.
+- `GET /v1/github/callback` to validate state and persist the installation ID/account binding.
+- `GET /v1/github/status` for connection state.
+- `GET /v1/github/repositories` to list only repositories granted to the installation.
+- `PUT /v1/github/repository` to bind one granted repository to the workspace.
+- `DELETE /v1/github/repository` to remove the local workspace binding without uninstalling the App.
 
-Run: `cd server && uv run pytest tests/test_release_service.py tests/test_github_client.py -q`
+Generate an installation access token only when making a GitHub request. Restrict it to the bound repository, keep it in memory for at most its one-hour lifetime, and never return or persist it.
 
-Expected: PASS with no write calls for invalid approval or blocked source mapping.
+- [ ] **Step 5: Implement server-side GitHub release**
 
-- [ ] **Step 6: Commit GitHub release support**
+Read the selected repository's metadata, default-branch ref, base commit, base tree, and required source files. Translate the complete approved ledger before any write and present the source diff. On release approval, create one tree and commit per approved ledger entry in order, chaining each commit to the previous one. Create a unique `doable/<change-set-id>` ref pointing to the final commit, then open the PR. Never force-update an existing ref, write to the default branch, or merge. Include approved change IDs, commit SHAs, QA results, and memory-derived conventions in the PR body.
+
+Bind release idempotency to the approved ledger hash. A retry returns the existing branch/PR. Re-read the default-branch SHA immediately before writes and return `base_branch_moved` if it differs from the translation base.
+
+- [ ] **Step 6: Verify release behavior**
+
+Run: `cd server && uv run pytest tests/test_github_app.py tests/test_release_service.py tests/test_github_client.py -q`
+
+Expected: PASS with no write calls for invalid approval, blocked source mapping, unbound repositories, callback state mismatch, or moved default branches.
+
+- [ ] **Step 7: Commit GitHub release support**
 
 Run: `git add server && git commit -m "feat: release approved changes as pull requests"`
 

@@ -16,7 +16,7 @@ The architecture accepts arbitrary connected repositories, but v1 only guarantee
 
 ## User Workflow
 
-1. The manager connects GitHub and provides a repository URL plus the website URL.
+1. The manager clicks **Connect GitHub**, installs the Doable GitHub App on selected repositories, chooses one connected repository, and provides the website URL.
 2. The manager opens the website and opens Doable from Chrome's side panel.
 3. Doable enters selection mode. Hovering outlines elements; clicking one captures its DOM context, computed styles, a screenshot crop, URL, viewport, and `data-doable-id` when present.
 4. The manager asks for a change, such as "Make this call-to-action more prominent and change the copy to Start free."
@@ -61,6 +61,27 @@ Hermes is the agent runtime, not merely a development assistant.
   - `create_pull_request`
 - Hermes emits run and tool progress to the server. The extension renders this as a trace for the manager and judges.
 - The manager's approval is an explicit release guardrail. `create_pull_request` rejects calls unless the server has a current approval token bound to the change set.
+
+## GitHub Connection and Release
+
+Doable integrates through a GitHub App, not a personal access token or a broad OAuth App token. The GitHub App requests only repository **Metadata: read**, **Contents: read and write**, and **Pull requests: read and write**. Webhooks are disabled for v1 because the release workflow is user-triggered.
+
+The side panel exposes one **Connect GitHub** action. The server creates a short-lived signed state value bound to the Doable session and returns the GitHub App installation URL. The extension opens that URL in a normal browser tab, where GitHub authenticates the manager and lets them grant access to selected repositories. The callback validates state and stores only the installation ID and account metadata. The extension receives connection status through its server session; it never receives a GitHub token.
+
+After installation, the side panel loads the repositories visible to that installation and asks the manager to choose one. The server stores the selected repository ID, full name, default branch, and installation ID as the workspace's repository binding. A manager may change the selection or disconnect it; disconnecting deletes the local binding but does not silently uninstall the GitHub App.
+
+For every repository operation, the server generates a repository-restricted installation access token. Installation tokens expire after one hour and are never persisted. Repository reads and writes always verify that the requested repository belongs to the workspace's installation.
+
+### Pull Request Lifecycle
+
+1. Read repository metadata, the default-branch reference, base commit, and base tree.
+2. Read only the source files required to map the approved ledger entries.
+3. Translate changes without modifying GitHub and show the resulting source diff to the manager.
+4. After release approval, create one Git commit per approved ledger entry in ledger order. Each commit uses the preceding generated commit as its parent and contains only that entry's source changes.
+5. Create a unique `doable/<change-set-id>` branch reference pointing to the final generated commit, without force-updating an existing branch.
+6. Open a pull request from that branch to the captured default branch and return its URL, commit SHAs, and blocked entries.
+
+The release request is idempotent by approved ledger hash. A retry returns the existing branch or pull request instead of creating duplicates. If the default branch moved after source translation, release stops with `base_branch_moved` and asks the manager to regenerate the source diff. Doable never pushes to the default branch and never merges a pull request.
 
 ## Persistent Memory with Supermemory
 
@@ -154,6 +175,7 @@ The release agent maps a `data-doable-id` to source by searching the connected r
 The Chrome side panel contains:
 
 - Connection state for the website and GitHub repository.
+- A Connect GitHub action, connected-account status, repository picker, and disconnect action.
 - A selection mode toggle and current component summary.
 - Conversation and streaming Hermes activity.
 - A preview review card with approve, revise, discard, and undo controls.
@@ -166,7 +188,7 @@ The Chrome side panel contains:
 
 - The extension does not receive a Hermes API key or GitHub access token.
 - The server authenticates extension requests with an ephemeral session token tied to the browser installation.
-- GitHub OAuth tokens are stored server-side only and encrypted at rest for the demo environment.
+- GitHub App private keys stay server-side. Short-lived installation tokens are scoped to the selected repository and are never persisted or sent to the extension.
 - Supermemory credentials stay only in the active Hermes profile environment; the extension and server never receive or return the API key.
 - Workspace memory is opt-in and stays inside the workspace's dedicated Hermes profile and Supermemory container.
 - The server redacts secret-like values before agent execution or explicit memory writes.
@@ -193,7 +215,8 @@ For each request, the acceptance criteria are: preview applies, undo restores th
 - If an element cannot be selected, Doable keeps selection mode active and explains the failure in the side panel.
 - If Hermes or the server fails, the existing preview remains unchanged and the run is marked failed with its last completed step.
 - If QA fails, the change cannot be approved until a new preview passes or the manager discards it.
-- If GitHub authorization expires, release stops before any write and requests reconnection.
+- If the GitHub App is uninstalled, repository access is removed, or token generation fails, release stops before any write and requests reconnection.
+- If the default branch changes after translation, release stops before branch creation and asks the manager to regenerate the source diff.
 - If source mapping fails for an approved entry, it is clearly blocked and omitted; Doable never opens a PR containing guessed code changes.
 
 ## Success Criteria for Judging
