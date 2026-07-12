@@ -108,4 +108,3 @@ async def test_hermes_normalizes_a_single_summary_string() -> None:
         patch, _ = await service.preview("Change color", workspace(), None, "session-1")
 
     assert patch.summary == ["Changed the main color"]
-
