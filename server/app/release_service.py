@@ -7,6 +7,7 @@ from html.parser import HTMLParser
 import tinycss2
 from tinycss2.ast import Declaration, ParseError, QualifiedRule
 
+from app.convex_client import ConvexClient, ConvexUnavailable
 from app.github_client import GitHubClient
 from app.models import ApprovedChange, ReleaseResponse, RepositoryBinding
 from app.sessions import ReleaseSnapshot
@@ -334,8 +335,13 @@ class StaticSiteTranslator:
 
 
 class ReleaseService:
-    def __init__(self, translator: StaticSiteTranslator | None = None) -> None:
+    def __init__(
+        self,
+        translator: StaticSiteTranslator | None = None,
+        convex: ConvexClient | None = None,
+    ) -> None:
         self._translator = translator or StaticSiteTranslator()
+        self._convex = convex or ConvexClient()
         self._results: dict[tuple[int, int, str], ReleaseResponse] = {}
         self._lock = asyncio.Lock()
 
@@ -350,6 +356,10 @@ class ReleaseService:
             repository.repository_id,
             snapshot.ledger_hash,
         )
+        persisted = self._get_persisted(snapshot, repository)
+        if persisted is not None:
+            self._results[result_key] = persisted.model_copy(deep=True)
+            return persisted
         cached = self._results.get(result_key)
         if cached is not None:
             return cached.model_copy(deep=True)
@@ -360,7 +370,52 @@ class ReleaseService:
                 return cached.model_copy(deep=True)
             result = await self._release(snapshot, repository, client)
             self._results[result_key] = result.model_copy(deep=True)
+            self._persist(snapshot, repository, result)
             return result
+
+    def _get_persisted(
+        self,
+        snapshot: ReleaseSnapshot,
+        repository: RepositoryBinding,
+    ) -> ReleaseResponse | None:
+        if not self._convex.configured:
+            return None
+        try:
+            record = self._convex.query(
+                "releases:get",
+                {
+                    "ledgerHash": snapshot.ledger_hash,
+                    "installationId": repository.installation_id,
+                    "repositoryId": repository.repository_id,
+                },
+            )
+            if record is None:
+                return None
+            result = ReleaseResponse.model_validate(record["payload"])
+            return result if result.ledger_hash == snapshot.ledger_hash else None
+        except (ConvexUnavailable, KeyError, TypeError, ValueError):
+            return None
+
+    def _persist(
+        self,
+        snapshot: ReleaseSnapshot,
+        repository: RepositoryBinding,
+        result: ReleaseResponse,
+    ) -> None:
+        if not self._convex.configured:
+            return
+        try:
+            self._convex.mutation(
+                "releases:put",
+                {
+                    "ledgerHash": snapshot.ledger_hash,
+                    "installationId": repository.installation_id,
+                    "repositoryId": repository.repository_id,
+                    "payload": result.model_dump(mode="json", by_alias=True),
+                },
+            )
+        except ConvexUnavailable:
+            pass
 
     async def _release(
         self,

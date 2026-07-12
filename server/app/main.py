@@ -1,4 +1,4 @@
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Response, WebSocket, WebSocketDisconnect, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -367,6 +367,14 @@ def get_changes(
     token: SessionToken,
 ) -> ChangesResponse:
     return ChangesResponse(changes=store.get_changes(session_id, token))
+
+
+@app.get("/v1/sessions/{session_id}/events")
+def get_session_events(
+    session_id: str,
+    token: SessionToken,
+) -> dict[str, list[dict[str, Any]]]:
+    return {"events": store.get_events(session_id, token)}
 
 
 @app.delete("/v1/sessions/{session_id}/draft", status_code=status.HTTP_204_NO_CONTENT)

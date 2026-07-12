@@ -2,8 +2,10 @@ import secrets
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from threading import RLock
+from typing import Any
 from uuid import uuid4
 
+from app.convex_client import ConvexClient, ConvexUnavailable
 from app.ledger import ApprovalRecord, change_hash, issue_approval, verify_approval
 from app.models import (
     ApprovalResponse,
@@ -61,16 +63,23 @@ class SessionState:
 
 
 class SessionStore:
-    def __init__(self) -> None:
+    def __init__(self, convex: ConvexClient | None = None) -> None:
         self._lock = RLock()
         self._sessions: dict[str, SessionState] = {}
+        self._convex = convex or ConvexClient()
+        self._persistence = "convex" if self._convex.configured else "memory"
+
+    @property
+    def persistence(self) -> str:
+        return self._persistence
 
     def create(self) -> SessionCreatedResponse:
         with self._lock:
             session_id = str(uuid4())
             token = secrets.token_urlsafe(32)
-            self._sessions[session_id] = SessionState(
-                session_id=session_id, token=token)
+            state = SessionState(session_id=session_id, token=token)
+            self._persist(state)
+            self._append_event(session_id, "session_created", {})
             return SessionCreatedResponse(session_id=session_id, session_token=token)
 
     def authenticate(self, session_id: str, token: str) -> None:
@@ -98,6 +107,12 @@ class SessionStore:
             state = self._authenticated(session_id, token)
             state.selection = selection.model_copy(deep=True)
             state.draft = None
+            self._persist(state)
+            self._append_event(
+                session_id,
+                "selection_updated",
+                {"selectionId": selection.selection_id},
+            )
             return state.selection.model_copy(deep=True)
 
     def set_draft(self, session_id: str, token: str, draft: DraftRequest) -> DraftState:
@@ -113,6 +128,15 @@ class SessionStore:
             state.draft = DraftState(
                 selection_id=state.selection.selection_id,
                 **draft.model_dump(),
+            )
+            self._persist(state)
+            self._append_event(
+                session_id,
+                "draft_updated",
+                {
+                    "selectionId": state.draft.selection_id,
+                    "patchId": state.draft.patch.patch_id,
+                },
             )
             return state.draft.model_copy(deep=True)
 
@@ -140,6 +164,12 @@ class SessionStore:
             state.approved_changes.append(change)
             state.approval = issue_approval(state.approved_changes)
             state.draft = None
+            self._persist(state)
+            self._append_event(
+                session_id,
+                "change_approved",
+                {"changeId": change.change_id, "ledgerHash": state.approval.ledger_hash},
+            )
 
             return ApprovalResponse(
                 change=change.model_copy(deep=True),
@@ -156,6 +186,8 @@ class SessionStore:
         with self._lock:
             state = self._authenticated(session_id, token)
             state.draft = None
+            self._persist(state)
+            self._append_event(session_id, "draft_cleared", {})
 
     def bind_installation(
         self,
@@ -163,12 +195,16 @@ class SessionStore:
         installation: GitHubInstallation,
     ) -> GitHubInstallation:
         with self._lock:
-            state = self._sessions.get(session_id)
-            if state is None:
-                raise SessionNotFound
+            state = self._state(session_id)
             if state.github_installation != installation:
                 state.repository = None
             state.github_installation = installation.model_copy(deep=True)
+            self._persist(state)
+            self._append_event(
+                session_id,
+                "github_bound",
+                {"installationId": installation.installation_id, "account": installation.account},
+            )
             return state.github_installation.model_copy(deep=True)
 
     def begin_github_install(self, session_id: str, token: str) -> str:
@@ -179,12 +215,13 @@ class SessionStore:
                 nonce=nonce,
                 expires_at=datetime.now(timezone.utc) + timedelta(minutes=10),
             )
+            self._persist(state)
             return nonce
 
     def consume_github_install(self, session_id: str, nonce: str) -> None:
         with self._lock:
-            state = self._sessions.get(session_id)
-            attempt = state.github_install_attempt if state is not None else None
+            state = self._state(session_id)
+            attempt = state.github_install_attempt
             if (
                 attempt is None
                 or attempt.consumed
@@ -194,6 +231,7 @@ class SessionStore:
                 raise SessionConflict(
                     "Invalid or expired GitHub installation state")
             attempt.consumed = True
+            self._persist(state)
 
     def set_pending_installation(
         self,
@@ -202,8 +240,8 @@ class SessionStore:
         installation: GitHubInstallation,
     ) -> GitHubInstallation:
         with self._lock:
-            state = self._sessions.get(session_id)
-            attempt = state.github_install_attempt if state is not None else None
+            state = self._state(session_id)
+            attempt = state.github_install_attempt
             if (
                 attempt is None
                 or not attempt.consumed
@@ -213,6 +251,7 @@ class SessionStore:
                 raise SessionConflict(
                     "Invalid or expired GitHub installation state")
             attempt.candidate = installation.model_copy(deep=True)
+            self._persist(state)
             return attempt.candidate.model_copy(deep=True)
 
     def get_pending_installation(
@@ -225,6 +264,7 @@ class SessionStore:
             attempt = state.github_install_attempt
             if attempt is None or datetime.now(timezone.utc) >= attempt.expires_at:
                 state.github_install_attempt = None
+                self._persist(state)
                 return None
             return self._copy(attempt.candidate)
 
@@ -243,6 +283,7 @@ class SessionStore:
                 or datetime.now(timezone.utc) >= attempt.expires_at
             ):
                 state.github_install_attempt = None
+                self._persist(state)
                 raise SessionConflict(
                     "There is no pending GitHub installation to confirm")
             installation = attempt.candidate.model_copy(deep=True)
@@ -250,6 +291,12 @@ class SessionStore:
                 state.repository = None
             state.github_installation = installation
             state.github_install_attempt = None
+            self._persist(state)
+            self._append_event(
+                session_id,
+                "github_bound",
+                {"installationId": installation.installation_id, "account": installation.account},
+            )
             return installation.model_copy(deep=True)
 
     def get_github_connection(
@@ -289,12 +336,47 @@ class SessionStore:
                 installation_id=state.github_installation.installation_id,
                 account=state.github_installation.account,
             )
+            self._persist(state)
+            self._append_event(
+                session_id,
+                "repository_bound",
+                {
+                    "repositoryId": state.repository.repository_id,
+                    "fullName": state.repository.full_name,
+                },
+            )
             return state.repository.model_copy(deep=True)
 
     def disconnect_repository(self, session_id: str, token: str) -> None:
         with self._lock:
             state = self._authenticated(session_id, token)
             state.repository = None
+            self._persist(state)
+            self._append_event(session_id, "repository_disconnected", {})
+
+    def get_events(
+        self,
+        session_id: str,
+        token: str,
+    ) -> list[dict[str, Any]]:
+        with self._lock:
+            self._authenticated(session_id, token)
+            if not self._convex.configured:
+                return []
+            try:
+                events = self._convex.query("runEvents:list", {"sessionId": session_id})
+            except ConvexUnavailable:
+                self._persistence = "memory-fallback"
+                return []
+            self._persistence = "convex"
+            return [
+                {
+                    "kind": event["kind"],
+                    "payload": event["payload"],
+                    "createdAt": event["createdAt"],
+                }
+                for event in events or []
+            ]
 
     def verify_release(
         self,
@@ -350,12 +432,158 @@ class SessionStore:
             )
 
     def _authenticated(self, session_id: str, token: str) -> SessionState:
-        state = self._sessions.get(session_id)
-        if state is None:
-            raise SessionNotFound
+        state = self._state(session_id)
         if not token or not secrets.compare_digest(state.token, token):
             raise InvalidSessionToken
         return state
+
+    def _state(self, session_id: str) -> SessionState:
+        state = self._sessions.get(session_id)
+        if state is None:
+            state = self._load(session_id)
+        if state is None:
+            raise SessionNotFound
+        return state
+
+    def _load(self, session_id: str) -> SessionState | None:
+        if not self._convex.configured:
+            return None
+        try:
+            record = self._convex.query("sessions:get", {"sessionId": session_id})
+            if record is None:
+                self._persistence = "convex"
+                return None
+            state = self._deserialize_state(record)
+        except (ConvexUnavailable, KeyError, TypeError, ValueError):
+            self._persistence = "memory-fallback"
+            return None
+        self._sessions[session_id] = state
+        self._persistence = "convex"
+        return state
+
+    def _persist(self, state: SessionState) -> None:
+        self._sessions[state.session_id] = state
+        if not self._convex.configured:
+            return
+        try:
+            self._convex.mutation(
+                "sessions:put",
+                {
+                    "sessionId": state.session_id,
+                    "sessionToken": state.token,
+                    "payload": self._serialize_state(state),
+                },
+            )
+        except ConvexUnavailable:
+            self._persistence = "memory-fallback"
+        else:
+            self._persistence = "convex"
+
+    def _append_event(self, session_id: str, kind: str, payload: dict[str, Any]) -> None:
+        if not self._convex.configured:
+            return
+        try:
+            self._convex.mutation(
+                "runEvents:append",
+                {"sessionId": session_id, "kind": kind, "payload": payload},
+            )
+        except ConvexUnavailable:
+            self._persistence = "memory-fallback"
+
+    @staticmethod
+    def _serialize_state(state: SessionState) -> dict[str, Any]:
+        def dump(model):
+            return model.model_dump(mode="json", by_alias=True) if model is not None else None
+
+        attempt = state.github_install_attempt
+        approval = state.approval
+        return {
+            "sessionId": state.session_id,
+            "token": state.token,
+            "selection": dump(state.selection),
+            "draft": dump(state.draft),
+            "approvedChanges": [dump(change) for change in state.approved_changes],
+            "githubInstallation": dump(state.github_installation),
+            "githubInstallAttempt": (
+                {
+                    "nonce": attempt.nonce,
+                    "expiresAt": attempt.expires_at.isoformat(),
+                    "consumed": attempt.consumed,
+                    "candidate": dump(attempt.candidate),
+                }
+                if attempt is not None
+                else None
+            ),
+            "repository": dump(state.repository),
+            "approval": (
+                {
+                    "token": approval.token,
+                    "ledgerHash": approval.ledger_hash,
+                    "references": [dump(reference) for reference in approval.references],
+                }
+                if approval is not None
+                else None
+            ),
+        }
+
+    @staticmethod
+    def _deserialize_state(record: dict[str, Any]) -> SessionState:
+        payload = record["payload"]
+        attempt_data = payload.get("githubInstallAttempt")
+        approval_data = payload.get("approval")
+        attempt = None
+        if attempt_data is not None:
+            candidate = attempt_data.get("candidate")
+            attempt = GitHubInstallAttempt(
+                nonce=attempt_data["nonce"],
+                expires_at=datetime.fromisoformat(attempt_data["expiresAt"]),
+                consumed=attempt_data.get("consumed", False),
+                candidate=(
+                    GitHubInstallation.model_validate(candidate)
+                    if candidate is not None
+                    else None
+                ),
+            )
+        approval = None
+        if approval_data is not None:
+            approval = ApprovalRecord(
+                token=approval_data["token"],
+                ledger_hash=approval_data["ledgerHash"],
+                references=tuple(
+                    ApprovedChangeReference.model_validate(reference)
+                    for reference in approval_data["references"]
+                ),
+            )
+        return SessionState(
+            session_id=record["sessionId"],
+            token=record["sessionToken"],
+            selection=(
+                SelectedComponent.model_validate(payload["selection"])
+                if payload.get("selection") is not None
+                else None
+            ),
+            draft=(
+                DraftState.model_validate(payload["draft"])
+                if payload.get("draft") is not None
+                else None
+            ),
+            approved_changes=[
+                ApprovedChange.model_validate(change)
+                for change in payload.get("approvedChanges", [])
+            ],
+            github_installation=(
+                GitHubInstallation.model_validate(payload["githubInstallation"])
+                if payload.get("githubInstallation") is not None
+                else None
+            ),
+            github_install_attempt=attempt,
+            repository=(
+                RepositoryBinding.model_validate(payload["repository"])
+                if payload.get("repository") is not None
+                else None
+            ),
+            approval=approval,
+        )
 
     @staticmethod
     def _copy(

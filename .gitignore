@@ -3,7 +3,9 @@
 .env
 .env.*
 !.env.example
+.env.local
 *.pem
+node_modules/
 
 extension/.turbo/
 extension/dist/
