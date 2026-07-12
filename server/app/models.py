@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 def to_camel(value: str) -> str:
@@ -44,6 +44,49 @@ class PreviewPatch(APIModel):
     styles: dict[str, str | None] | None = None
     parent_styles: dict[str, str | None] | None = None
     rationale: str
+
+    @field_validator("attributes")
+    @classmethod
+    def reject_unsafe_attributes(
+        cls,
+        attributes: dict[str, str | None] | None,
+    ) -> dict[str, str | None] | None:
+        for name, value in (attributes or {}).items():
+            normalized_name = name.strip().lower()
+            if normalized_name.startswith("on") or normalized_name in {"srcdoc", "style"}:
+                raise ValueError(f"Unsafe preview attribute: {name}")
+            if value is not None and "javascript:" in value.lower():
+                raise ValueError(f"Unsafe preview attribute value: {name}")
+        return attributes
+
+    @field_validator("styles", "parent_styles")
+    @classmethod
+    def reject_unsafe_styles(
+        cls,
+        styles: dict[str, str | None] | None,
+    ) -> dict[str, str | None] | None:
+        for name, value in (styles or {}).items():
+            normalized_name = name.strip().lower()
+            if normalized_name in {"behavior", "-moz-binding"}:
+                raise ValueError(f"Unsafe preview style: {name}")
+            normalized_value = (value or "").lower()
+            if any(token in normalized_value for token in ("javascript:", "expression(", "@import", "</script")):
+                raise ValueError(f"Unsafe preview style value: {name}")
+        return styles
+
+
+class PreviewRequest(APIModel):
+    request: str = Field(min_length=1, max_length=4_000)
+
+
+class PreviewResponse(APIModel):
+    patch: PreviewPatch
+    response_id: str | None = None
+
+
+class HermesStatusResponse(APIModel):
+    status: str
+    detail: str | None = None
 
 
 class QAResult(APIModel):
