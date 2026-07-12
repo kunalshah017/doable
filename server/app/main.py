@@ -386,6 +386,15 @@ def delete_draft(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
+@app.delete("/v1/sessions/{session_id}/workspace", status_code=status.HTTP_204_NO_CONTENT)
+def reset_workspace(
+    session_id: str,
+    token: SessionToken,
+) -> Response:
+    store.reset_workspace(session_id, token)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @app.post("/v1/sessions/{session_id}/release/verify", response_model=ReleaseVerificationResponse)
 def verify_release(
     session_id: str,

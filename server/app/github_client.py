@@ -98,7 +98,7 @@ class GitHubClient:
             raise GitHubAPIError(
                 f"Unsupported GitHub content encoding for {path}")
         try:
-            return base64.b64decode(content, validate=True).decode("utf-8")
+            return base64.b64decode("".join(content.split()), validate=True).decode("utf-8")
         except (ValueError, UnicodeDecodeError) as exception:
             raise GitHubAPIError(
                 f"Repository file is not valid UTF-8: {path}") from exception

@@ -190,6 +190,16 @@ class SessionStore:
             self._persist(state)
             self._append_event(session_id, "draft_cleared", {})
 
+    def reset_workspace(self, session_id: str, token: str) -> None:
+        with self._lock:
+            state = self._authenticated(session_id, token)
+            state.selection = None
+            state.draft = None
+            state.approved_changes = []
+            state.approval = None
+            self._persist(state)
+            self._append_event(session_id, "workspace_reset", {})
+
     def bind_installation(
         self,
         session_id: str,

@@ -1,6 +1,6 @@
 import '@src/SidePanel.css';
 import { DoableServerApi, SERVER_BASE_URL, displayError } from '@src/server-api';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type {
   ApprovedChange,
   ContentMessage,
@@ -71,6 +71,7 @@ const SidePanel = () => {
   const [githubBusy, setGitHubBusy] = useState<GitHubBusyAction>(null);
   const [notice, setNotice] = useState<Notice>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const initialReset = useRef<Promise<void> | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -82,6 +83,10 @@ const SidePanel = () => {
         await serverApi.health();
         if (!active) return;
         setServerState('online');
+
+        initialReset.current ??= serverApi.resetWorkspace();
+        await initialReset.current;
+        if (!active) return;
 
         const session = await serverApi.getSession();
         const approvedChanges = await serverApi.getChanges();

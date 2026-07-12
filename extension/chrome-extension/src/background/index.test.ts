@@ -25,6 +25,7 @@ describe('background selection routing', () => {
     vi.stubGlobal('chrome', {
       runtime: {
         onMessage: { addListener: vi.fn(listener => (onMessage = listener)) },
+        onInstalled: { addListener: vi.fn() },
         onConnect: { addListener: vi.fn() },
         sendMessage: broadcast,
       },
@@ -33,6 +34,7 @@ describe('background selection routing', () => {
         query: vi.fn(async () => [{ id: 42, url: pendingSelection.pageUrl }]),
         sendMessage: vi.fn(),
       },
+      sidePanel: { setPanelBehavior: vi.fn(async () => undefined) },
     });
     await import('./index');
     const sendResponse = vi.fn();
@@ -65,6 +67,7 @@ describe('background selection routing', () => {
     vi.stubGlobal('chrome', {
       runtime: {
         onMessage: { addListener: vi.fn(listener => (onMessage = listener)) },
+        onInstalled: { addListener: vi.fn() },
         onConnect: { addListener: vi.fn() },
         sendMessage: broadcast,
       },
@@ -73,6 +76,7 @@ describe('background selection routing', () => {
         query: vi.fn(async () => []),
         sendMessage: vi.fn(),
       },
+      sidePanel: { setPanelBehavior: vi.fn(async () => undefined) },
     });
     await import('./index');
     const sendResponse = vi.fn();
@@ -106,6 +110,7 @@ describe('background selection routing', () => {
     vi.stubGlobal('chrome', {
       runtime: {
         onMessage: { addListener: vi.fn(listener => (onMessage = listener)) },
+        onInstalled: { addListener: vi.fn() },
         onConnect: { addListener: vi.fn() },
         sendMessage: broadcast,
       },
@@ -114,6 +119,7 @@ describe('background selection routing', () => {
         query: queryActiveTabs,
         sendMessage: vi.fn(),
       },
+      sidePanel: { setPanelBehavior: vi.fn(async () => undefined) },
     });
     await import('./index');
     const sendResponse = vi.fn();

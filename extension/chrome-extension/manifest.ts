@@ -8,7 +8,7 @@ const manifest = {
   name: 'Doable',
   version: packageJson.version,
   description: 'Preview website changes with a Hermes-powered engineering agency',
-  host_permissions: ['http://*/*', 'https://*/*'],
+  host_permissions: ['<all_urls>'],
   permissions: ['activeTab', 'storage', 'scripting', 'tabs', 'sidePanel'],
   background: {
     service_worker: 'background.js',

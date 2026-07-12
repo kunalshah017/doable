@@ -68,6 +68,7 @@ type GitHubStatus = {
   detail?: string;
   connected: boolean;
   account?: string;
+  pendingAccount?: string;
   repository?: RepositoryBinding;
 };
 
@@ -171,6 +172,12 @@ class DoableServerApi {
   }
 
   async getGitHubStatus() {
+    const status = await this.authenticatedRequest<GitHubStatus>(
+      session => `/v1/github/status?sessionId=${encodeURIComponent(session.sessionId)}`,
+    );
+    if (status.connected || !status.pendingAccount) return status;
+
+    await this.sessionRequest('/github/install/confirm', { method: 'POST' });
     return this.authenticatedRequest<GitHubStatus>(
       session => `/v1/github/status?sessionId=${encodeURIComponent(session.sessionId)}`,
     );
@@ -227,6 +234,12 @@ class DoableServerApi {
 
   async deleteDraft() {
     await this.sessionRequest<void>('/draft', { method: 'DELETE' });
+  }
+
+  async resetWorkspace() {
+    const session = await this.ensureSession();
+    await this.sessionRequest<void>('/workspace', { method: 'DELETE' });
+    await chrome.storage.local.remove(`${APPROVAL_KEY_PREFIX}${session.sessionId}`);
   }
 
   private async publicRequest<T>(path: string, init?: RequestInit): Promise<T> {
