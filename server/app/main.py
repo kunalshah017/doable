@@ -442,7 +442,8 @@ async def get_workspace_source(
 ) -> StaticSourceWorkspace:
     _, repository = store.get_github_connection(session_id, token)
     if repository is None:
-        raise SessionConflict("Select a GitHub repository before loading source")
+        raise SessionConflict(
+            "Select a GitHub repository before loading source")
     client = GitHubClient(
         github_app,
         repository.installation_id,

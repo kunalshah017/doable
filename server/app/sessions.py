@@ -288,7 +288,8 @@ class SessionStore:
             if state.workspace_draft is None:
                 raise SessionConflict("There is no workspace draft to approve")
             if not state.workspace_draft.qa.passed:
-                raise SessionConflict("Workspace draft QA must pass before approval")
+                raise SessionConflict(
+                    "Workspace draft QA must pass before approval")
 
             before = self._composed_workspace(state)
             after = apply_workspace_patch(before, state.workspace_draft.patch)
@@ -796,7 +797,8 @@ class SessionStore:
             ),
             approval=approval,
             workspace_source=(
-                StaticSourceWorkspace.model_validate(payload["workspaceSource"])
+                StaticSourceWorkspace.model_validate(
+                    payload["workspaceSource"])
                 if payload.get("workspaceSource") is not None
                 else None
             ),

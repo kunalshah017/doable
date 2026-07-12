@@ -81,7 +81,8 @@ def validate_workspace(files: dict[StaticFilePath, str]) -> None:
         parser.feed(files["index.html"])
         parser.close()
     except Exception as exception:
-        raise WorkspacePreviewInvalid("index.html contains invalid HTML") from exception
+        raise WorkspacePreviewInvalid(
+            "index.html contains invalid HTML") from exception
     if parser.error:
         raise WorkspacePreviewInvalid(parser.error)
 
@@ -98,7 +99,8 @@ def validate_workspace(files: dict[StaticFilePath, str]) -> None:
 
     javascript = files.get("script.js", "")
     if UNSAFE_JS.search(javascript):
-        raise WorkspacePreviewInvalid("JavaScript contains a denied network API")
+        raise WorkspacePreviewInvalid(
+            "JavaScript contains a denied network API")
     if javascript:
         try:
             result = subprocess.run(
@@ -114,7 +116,8 @@ def validate_workspace(files: dict[StaticFilePath, str]) -> None:
                 "JavaScript validation is unavailable"
             ) from exception
         if result.returncode != 0:
-            raise WorkspacePreviewInvalid("script.js contains invalid JavaScript")
+            raise WorkspacePreviewInvalid(
+                "script.js contains invalid JavaScript")
 
 
 def apply_workspace_patch(
@@ -122,7 +125,8 @@ def apply_workspace_patch(
     patch: WorkspacePatch,
 ) -> StaticSourceWorkspace:
     if patch.base_commit_sha != workspace.base_commit_sha:
-        raise WorkspacePreviewInvalid("Patch base commit does not match workspace")
+        raise WorkspacePreviewInvalid(
+            "Patch base commit does not match workspace")
     files = dict(workspace.files)
     files.update(patch.files)
     validate_workspace(files)

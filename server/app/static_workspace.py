@@ -38,5 +38,6 @@ class StaticWorkspaceLoader:
             if content is not None:
                 files[path] = content
         if "index.html" not in files:
-            raise StaticWorkspaceUnavailable("Repository has no root index.html")
+            raise StaticWorkspaceUnavailable(
+                "Repository has no root index.html")
         return StaticSourceWorkspace(base_commit_sha=base_sha, files=files)
