@@ -2,6 +2,7 @@ import type { dynamicEnvValues } from './index.js';
 
 interface ICebEnv {
   readonly CEB_EXAMPLE: string;
+  readonly CEB_SERVER_URL: string;
 }
 
 interface ICebCliEnv {
