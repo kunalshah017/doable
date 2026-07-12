@@ -55,6 +55,11 @@ export type PendingSelectedComponentMessage = {
   component: PendingSelectedComponent;
 };
 
+export type SelectionErrorMessage = {
+  type: 'DOABLE_SELECTION_ERROR';
+  error: string;
+};
+
 export type ApplyPreviewMessage = {
   type: 'DOABLE_APPLY_PREVIEW';
   selector: string;
@@ -82,4 +87,5 @@ export type ContentMessage = SelectionModeMessage | ApplyPreviewMessage | UndoPr
 export type ExtensionMessage =
   | ContentMessage
   | PendingSelectedComponentMessage
-  | SelectedComponentMessage;
+  | SelectedComponentMessage
+  | SelectionErrorMessage;

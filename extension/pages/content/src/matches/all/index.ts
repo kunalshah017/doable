@@ -6,6 +6,7 @@ import type {
   PendingSelectedComponent,
   PendingSelectedComponentMessage,
   SelectionCompletionResponse,
+  SelectionErrorMessage,
 } from '@extension/shared';
 
 const SHADOW_BOUNDARY = ' >>> ';
@@ -144,6 +145,14 @@ const emitSelection = async (element: HTMLElement) => {
   }
 };
 
+const emitSelectionError = async (error: unknown) => {
+  const message = {
+    type: 'DOABLE_SELECTION_ERROR',
+    error: error instanceof Error ? error.message : String(error),
+  } satisfies SelectionErrorMessage;
+  await chrome.runtime.sendMessage(message);
+};
+
 const onPointerMove = (event: PointerEvent) => {
   if (selectionModeActive) updateHoverOverlay(elementFromPointer(event));
 };
@@ -158,7 +167,6 @@ const disableSelectionMode = () => {
   removeSelectionListeners();
   hoverOverlay?.remove();
   hoverOverlay = null;
-  previewPatches.clear();
 };
 
 const onSelectionClick = (event: MouseEvent) => {
@@ -167,8 +175,13 @@ const onSelectionClick = (event: MouseEvent) => {
   event.preventDefault();
   event.stopImmediatePropagation();
   const element = elementFromPointer(event);
-  disableSelectionMode();
-  if (element) void emitSelection(element).catch(error => console.error('[Doable] Selection failed', error));
+  if (!element) {
+    void emitSelectionError('Selection failed: No page element was found. Move the pointer over an element and try again.');
+    return;
+  }
+  void emitSelection(element)
+    .then(disableSelectionMode)
+    .catch(error => emitSelectionError(error).catch(deliveryError => console.error('[Doable] Error delivery failed', deliveryError)));
 };
 
 const enableSelectionMode = () => {
@@ -219,7 +232,11 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, _sender, sendRe
 });
 
 const backgroundPort = chrome.runtime.connect({ name: 'doable-content' });
-backgroundPort.onDisconnect.addListener(disableSelectionMode);
-window.addEventListener('pagehide', disableSelectionMode, { once: true });
+const disposeContentState = () => {
+  disableSelectionMode();
+  previewPatches.clear();
+};
+backgroundPort.onDisconnect.addListener(disposeContentState);
+window.addEventListener('pagehide', disposeContentState, { once: true });
 
 console.info('[Doable] Content script ready');

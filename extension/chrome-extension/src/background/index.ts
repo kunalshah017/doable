@@ -1,8 +1,4 @@
-import type {
-  ContentMessage,
-  ExtensionActionResponse,
-  ExtensionMessage,
-} from '@extension/shared';
+import type { ContentMessage, ExtensionActionResponse, ExtensionMessage } from '@extension/shared';
 import { completeSelection } from './selection-completion';
 import 'webextension-polyfill';
 
@@ -52,7 +48,16 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
   }
 
   if (message.type === 'DOABLE_SELECTED_COMPONENT_PENDING') {
-    void completeSelection(message.component, sender, chrome.tabs.captureVisibleTab).then(sendResponse);
+    void completeSelection(message.component, sender, chrome.tabs.captureVisibleTab).then(async response => {
+      if ('type' in response && response.type === 'DOABLE_SELECTED_COMPONENT') {
+        try {
+          await chrome.runtime.sendMessage(response);
+        } catch (error) {
+          console.error('[Doable] Selection delivery failed', error);
+        }
+      }
+      sendResponse(response);
+    });
     return true;
   }
   return false;

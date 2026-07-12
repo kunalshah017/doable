@@ -1,5 +1,5 @@
 import { PreviewPatchManager } from './preview-patches';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PreviewPatch } from '@extension/shared';
 
 const unsafeChanges: Array<Partial<PreviewPatch>> = [
@@ -69,6 +69,43 @@ describe('PreviewPatchManager', () => {
     manager.undo('patch-text-only');
 
     expect(target.outerHTML).toBe(originalDom);
+  });
+
+  it('restores the original child nodes and listeners through undo, replay, and clear', () => {
+    document.body.innerHTML = `
+      <button data-doable-id="save"><span class="icon">*</span><span class="label">Save</span></button>
+    `;
+    const manager = new PreviewPatchManager(document);
+    const target = document.querySelector<HTMLElement>('[data-doable-id="save"]')!;
+    const originalIcon = target.querySelector<HTMLElement>('.icon')!;
+    const onIconClick = vi.fn();
+    originalIcon.addEventListener('click', onIconClick);
+
+    manager.apply('[data-doable-id="save"]', {
+      patchId: 'patch-1',
+      selectionId: 'selection-1',
+      text: 'First preview',
+      rationale: 'Preview copy',
+    });
+    manager.apply('[data-doable-id="save"]', {
+      patchId: 'patch-2',
+      selectionId: 'selection-1',
+      attributes: { title: 'Latest preview' },
+      rationale: 'Preview title',
+    });
+
+    manager.undo('patch-1');
+
+    expect(target.querySelector('.icon')).toBe(originalIcon);
+    expect(target.getAttribute('title')).toBe('Latest preview');
+    originalIcon.click();
+    expect(onIconClick).toHaveBeenCalledOnce();
+
+    manager.clear();
+
+    expect(target.querySelector('.icon')).toBe(originalIcon);
+    expect(target.querySelector('.label')?.textContent).toBe('Save');
+    expect(target.hasAttribute('title')).toBe(false);
   });
 
   it('undoes the latest patch without disturbing the older patch, then clears exact originals', () => {

@@ -5,7 +5,7 @@ type PatchSnapshot = {
   patch: PreviewPatch;
   target: HTMLElement;
   parent: HTMLElement | null;
-  text: string | null;
+  childNodes?: Node[];
   attributes: Array<[string, string]>;
   parentStyle: string | null;
 };
@@ -102,7 +102,7 @@ export class PreviewPatchManager {
       patch,
       target,
       parent,
-      text: target.textContent,
+      childNodes: patch.text === undefined ? undefined : Array.from(target.childNodes),
       attributes: Array.from(target.attributes, attribute => [attribute.name, attribute.value]),
       parentStyle: parent?.getAttribute('style') ?? null,
     });
@@ -124,7 +124,9 @@ export class PreviewPatchManager {
   }
 
   private restore(snapshot: PatchSnapshot) {
-    snapshot.target.textContent = snapshot.text;
+    if (snapshot.childNodes) {
+      snapshot.target.replaceChildren(...snapshot.childNodes);
+    }
     for (const name of snapshot.target.getAttributeNames()) {
       snapshot.target.removeAttribute(name);
     }
