@@ -148,9 +148,9 @@ export const CtaSection = () => {
   const grassY = useTransform(scrollYProgress, [0, 1], ['200px', '-200px']);
 
   return (
-    <section ref={sectionRef} id="top" className="relative min-h-[900px] w-full overflow-hidden" style={{ background: 'linear-gradient(to bottom, #10161a 0%, #14191E 100%)' }}>
+    <section ref={sectionRef} id="top" className="hero-stage relative w-full overflow-hidden" style={{ background: 'linear-gradient(to bottom, #10161a 0%, #14191E 100%)' }}>
       <div className="signal-field pointer-events-none absolute inset-0 opacity-55" aria-hidden="true" />
-      <div className="relative z-40 mx-auto max-w-[1240px] px-10 pt-8">
+      <div className="relative z-40 mx-auto max-w-[1240px] px-6 pt-6 xl:px-10 xl:pt-8">
         <nav className="liquid-glass flex items-center justify-between rounded-full px-5 py-3" aria-label="Primary navigation">
           <a href="#top" className="display-face inline-flex items-center gap-2 text-lg font-bold tracking-[0.08em] text-[#f4f1ea]">
             <span className="grid size-6 place-items-center rounded-md bg-[#ff5c4d] text-xs text-[#14191e]">D</span>
@@ -162,10 +162,10 @@ export const CtaSection = () => {
           </div>
           <PrimaryButton as="button" size="sm">Join the demo</PrimaryButton>
         </nav>
-        <div className="grid grid-cols-2 items-start gap-8 pt-36">
-          <div className="relative z-40 -mt-8 max-w-[440px]">
+        <div className="grid grid-cols-2 items-start gap-8 pt-24 xl:pt-36">
+          <div className="relative z-40 max-w-[400px] xl:-mt-8 xl:max-w-[440px]">
             <FadeUp>
-              <h1 className="display-face text-6xl font-bold leading-[0.95] tracking-normal text-[#f4f1ea]">
+              <h1 className="display-face text-5xl font-bold leading-[0.95] tracking-normal text-[#f4f1ea] xl:text-6xl">
                 Make the call. <span className="text-[#ff5c4d]">See it before it ships.</span>
               </h1>
             </FadeUp>
@@ -180,7 +180,7 @@ export const CtaSection = () => {
         </div>
       </div>
       <motion.div
-        className="absolute right-[-10%] top-[150px] z-10 w-[68%]"
+        className="hero-dashboard absolute z-10"
         style={{ y: dashboardY }}>
         <CtaDashboardMock />
       </motion.div>

@@ -71,6 +71,29 @@ a {
   animation: signal-drift 18s linear infinite;
 }
 
+.hero-stage {
+  height: 100dvh;
+  min-height: 900px;
+}
+
+.hero-dashboard {
+  top: 128px;
+  right: 0;
+  width: 58%;
+}
+
+@media (min-width: 1440px) {
+  .hero-stage {
+    min-height: 900px;
+  }
+
+  .hero-dashboard {
+    top: 150px;
+    right: -10%;
+    width: 68%;
+  }
+}
+
 .bg-noise {
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.35'/%3E%3C/svg%3E");
 }
