@@ -69,8 +69,10 @@ class HermesService:
         api_key: str | None = None,
         client: httpx.AsyncClient | None = None,
     ) -> None:
-        self._base_url = (base_url or os.getenv("HERMES_API_URL", "http://127.0.0.1:8642")).rstrip("/")
-        self._api_key = api_key if api_key is not None else os.getenv("HERMES_API_KEY")
+        self._base_url = (base_url or os.getenv(
+            "HERMES_API_URL", "http://127.0.0.1:8642")).rstrip("/")
+        self._api_key = api_key if api_key is not None else os.getenv(
+            "HERMES_API_KEY")
         self._client = client
 
     async def preview(
@@ -93,11 +95,13 @@ class HermesService:
         try:
             body = response.json()
         except ValueError as exception:
-            raise HermesInvalidResponse("Hermes returned a non-JSON API response. Retry the preview request.") from exception
+            raise HermesInvalidResponse(
+                "Hermes returned a non-JSON API response. Retry the preview request.") from exception
 
         text = self._extract_output_text(body)
         patch = self._parse_patch(text, selection.selection_id)
-        response_id = body.get("id") if isinstance(body, dict) and isinstance(body.get("id"), str) else None
+        response_id = body.get("id") if isinstance(
+            body, dict) and isinstance(body.get("id"), str) else None
         return patch, response_id
 
     async def health(self) -> None:
@@ -131,7 +135,8 @@ class HermesService:
             ) from exception
 
         if response.status_code in {401, 403}:
-            raise HermesUnavailable("Hermes authentication failed. Check HERMES_API_KEY.")
+            raise HermesUnavailable(
+                "Hermes authentication failed. Check HERMES_API_KEY.")
         if response.is_error:
             raise HermesUnavailable(
                 "Hermes rejected the request. Check the gateway logs and retry."
@@ -165,7 +170,8 @@ class HermesService:
     @staticmethod
     def _extract_output_text(body: Any) -> str:
         if not isinstance(body, dict):
-            raise HermesInvalidResponse("Hermes returned an invalid API response. Retry the preview request.")
+            raise HermesInvalidResponse(
+                "Hermes returned an invalid API response. Retry the preview request.")
 
         if isinstance(body.get("output_text"), str) and body["output_text"].strip():
             return body["output_text"].strip()
@@ -189,13 +195,15 @@ class HermesService:
 
         final_text = "\n".join(text.strip() for text in texts if text.strip())
         if not final_text:
-            raise HermesInvalidResponse("Hermes returned no final response text. Retry the preview request.")
+            raise HermesInvalidResponse(
+                "Hermes returned no final response text. Retry the preview request.")
         return final_text
 
     @staticmethod
     def _parse_patch(text: str, selection_id: str) -> PreviewPatch:
         stripped = text.strip()
-        fenced = re.fullmatch(r"```json\s*(\{.*\})\s*```", stripped, flags=re.DOTALL | re.IGNORECASE)
+        fenced = re.fullmatch(
+            r"```json\s*(\{.*\})\s*```", stripped, flags=re.DOTALL | re.IGNORECASE)
         if fenced:
             stripped = fenced.group(1)
         elif stripped.startswith("```"):
@@ -206,9 +214,11 @@ class HermesService:
         try:
             payload = json.loads(stripped)
         except json.JSONDecodeError as exception:
-            raise HermesInvalidResponse("Hermes returned invalid patch JSON. Retry the preview request.") from exception
+            raise HermesInvalidResponse(
+                "Hermes returned invalid patch JSON. Retry the preview request.") from exception
         if not isinstance(payload, dict):
-            raise HermesInvalidResponse("Hermes patch JSON must be an object. Retry the preview request.")
+            raise HermesInvalidResponse(
+                "Hermes patch JSON must be an object. Retry the preview request.")
 
         payload.pop("patchId", None)
         payload.pop("patch_id", None)

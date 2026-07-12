@@ -118,12 +118,55 @@ class ApprovedChange(APIModel):
     approved_at: datetime
 
 
-class RepositoryBinding(APIModel):
-    repository_id: int | None = None
-    installation_id: int | None = None
-    owner: str | None = None
-    name: str | None = None
-    default_branch: str | None = None
+class GitHubInstallation(APIModel):
+    installation_id: int
+    account: str
+
+
+class RepositorySummary(APIModel):
+    repository_id: int
+    full_name: str
+    default_branch: str
+    private: bool
+    html_url: str
+
+
+class RepositoryBinding(RepositorySummary):
+    installation_id: int
+    account: str
+
+
+class GitHubStatusResponse(APIModel):
+    configured: bool
+    detail: str | None = None
+    connected: bool = False
+    account: str | None = None
+    repository: RepositoryBinding | None = None
+
+
+class GitHubInstallStartResponse(APIModel):
+    install_url: str
+
+
+class GitHubRepositoriesResponse(APIModel):
+    repositories: list[RepositorySummary]
+
+
+class RepositoryBindRequest(APIModel):
+    repository_id: int
+
+
+class ReleaseRequest(APIModel):
+    approval_token: str
+    changes: list[str] = Field(min_length=1)
+
+
+class ReleaseResponse(APIModel):
+    pull_request_url: str
+    pull_request_number: int
+    branch: str
+    commit_shas: list[str]
+    ledger_hash: str
 
 
 class SessionCreatedResponse(APIModel):

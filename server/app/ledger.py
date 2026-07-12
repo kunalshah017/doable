@@ -45,13 +45,15 @@ def change_hash(change: ApprovedChange) -> str:
 
 def change_references(changes: list[ApprovedChange]) -> tuple[ApprovedChangeReference, ...]:
     return tuple(
-        ApprovedChangeReference(change_id=change.change_id, change_hash=change.change_hash)
+        ApprovedChangeReference(
+            change_id=change.change_id, change_hash=change.change_hash)
         for change in changes
     )
 
 
 def ledger_hash(changes: list[ApprovedChange]) -> str:
-    references = [reference.model_dump(mode="json", by_alias=True) for reference in change_references(changes)]
+    references = [reference.model_dump(
+        mode="json", by_alias=True) for reference in change_references(changes)]
     return stable_hash(references)
 
 

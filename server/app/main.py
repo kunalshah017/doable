@@ -1,9 +1,16 @@
 from typing import Annotated
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Response, WebSocket, WebSocketDisconnect, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Response, WebSocket, WebSocketDisconnect, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 
+from app.github_app import (
+    GitHubAPIError,
+    GitHubApp,
+    GitHubConfigurationError,
+    InvalidGitHubState,
+)
+from app.github_client import GitHubClient
 from app.hermes_service import HermesInvalidResponse, HermesService, HermesUnavailable
 from app.ledger import InvalidApprovalToken, LedgerMismatch
 from app.models import (
@@ -11,17 +18,26 @@ from app.models import (
     ChangesResponse,
     DraftRequest,
     DraftResponse,
+    GitHubInstallation,
+    GitHubInstallStartResponse,
+    GitHubRepositoriesResponse,
+    GitHubStatusResponse,
     HermesStatusResponse,
     PreviewRequest,
     PreviewResponse,
     QAResult,
+    ReleaseRequest,
+    ReleaseResponse,
     ReleaseVerificationRequest,
     ReleaseVerificationResponse,
+    RepositoryBindRequest,
+    RepositoryBinding,
     SelectedComponent,
     SelectionResponse,
     SessionCreatedResponse,
     SessionStatusResponse,
 )
+from app.release_service import ReleaseBlocked, ReleaseService
 from app.sessions import InvalidSessionToken, SessionConflict, SessionNotFound, SessionStore
 
 app = FastAPI(title="Doable Server")
@@ -34,13 +50,17 @@ app.add_middleware(
 )
 store = SessionStore()
 hermes_service = HermesService()
+github_app = GitHubApp()
+release_service = ReleaseService()
 
 
 def require_token(
-    x_doable_session_token: Annotated[str | None, Header(alias="X-Doable-Session-Token")] = None,
+    x_doable_session_token: Annotated[str | None, Header(
+        alias="X-Doable-Session-Token")] = None,
 ) -> str:
     if not x_doable_session_token:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid session token")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Invalid session token")
     return x_doable_session_token
 
 
@@ -83,6 +103,40 @@ async def hermes_invalid_response_handler(_, exception: HermesInvalidResponse) -
     )
 
 
+@app.exception_handler(GitHubConfigurationError)
+async def github_configuration_handler(
+    _, exception: GitHubConfigurationError
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        content={"detail": str(exception)},
+    )
+
+
+@app.exception_handler(InvalidGitHubState)
+async def invalid_github_state_handler(*_) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        content={"detail": "Invalid or expired GitHub installation state"},
+    )
+
+
+@app.exception_handler(GitHubAPIError)
+async def github_api_handler(_, exception: GitHubAPIError) -> JSONResponse:
+    return JSONResponse(
+        status_code=exception.status_code,
+        content={"detail": str(exception)},
+    )
+
+
+@app.exception_handler(ReleaseBlocked)
+async def release_blocked_handler(_, exception: ReleaseBlocked) -> JSONResponse:
+    return JSONResponse(
+        status_code=exception.status_code,
+        content={"code": exception.code, "detail": str(exception)},
+    )
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
@@ -101,9 +155,120 @@ async def hermes_status() -> HermesStatusResponse:
     return HermesStatusResponse(status="available")
 
 
+@app.get(
+    "/v1/github/status",
+    response_model=GitHubStatusResponse,
+    response_model_exclude_none=True,
+)
+def github_status(
+    session_id: Annotated[str | None, Query(alias="sessionId")] = None,
+    session_token: Annotated[
+        str | None, Header(alias="X-Doable-Session-Token")
+    ] = None,
+) -> GitHubStatusResponse:
+    configured, detail = github_app.status()
+    if session_id is None:
+        return GitHubStatusResponse(configured=configured, detail=detail)
+    if not session_token:
+        raise InvalidSessionToken
+    installation, repository = store.get_github_connection(session_id, session_token)
+    return GitHubStatusResponse(
+        configured=configured,
+        detail=detail,
+        connected=installation is not None,
+        account=installation.account if installation is not None else None,
+        repository=repository,
+    )
+
+
 @app.post("/v1/sessions", response_model=SessionCreatedResponse, status_code=status.HTTP_201_CREATED)
 def create_session() -> SessionCreatedResponse:
     return store.create()
+
+
+@app.post(
+    "/v1/sessions/{session_id}/github/install/start",
+    response_model=GitHubInstallStartResponse,
+)
+def start_github_install(
+    session_id: str,
+    token: SessionToken,
+) -> GitHubInstallStartResponse:
+    store.authenticate(session_id, token)
+    return GitHubInstallStartResponse(
+        install_url=github_app.installation_url(session_id)
+    )
+
+
+@app.get("/v1/github/callback", response_class=HTMLResponse)
+async def github_callback(
+    installation_id: int,
+    setup_action: str,
+    state: str,
+) -> HTMLResponse:
+    if installation_id <= 0 or setup_action not in {"install", "update"}:
+        raise InvalidGitHubState
+    session_id = github_app.verify_state(state)
+    account = await github_app.installation_account(installation_id)
+    store.bind_installation(
+        session_id,
+        GitHubInstallation(installation_id=installation_id, account=account),
+    )
+    return HTMLResponse(
+        "<!doctype html><html><head><title>GitHub connected</title></head>"
+        "<body><main><h1>GitHub connected</h1>"
+        "<p>You can close this window and return to Doable.</p></main></body></html>"
+    )
+
+
+@app.get(
+    "/v1/sessions/{session_id}/github/repositories",
+    response_model=GitHubRepositoriesResponse,
+)
+async def list_github_repositories(
+    session_id: str,
+    token: SessionToken,
+) -> GitHubRepositoriesResponse:
+    installation = store.get_installation(session_id, token)
+    client = GitHubClient(github_app, installation.installation_id)
+    return GitHubRepositoriesResponse(repositories=await client.list_repositories())
+
+
+@app.put(
+    "/v1/sessions/{session_id}/github/repository",
+    response_model=RepositoryBinding,
+)
+async def bind_github_repository(
+    session_id: str,
+    request: RepositoryBindRequest,
+    token: SessionToken,
+) -> RepositoryBinding:
+    installation = store.get_installation(session_id, token)
+    client = GitHubClient(github_app, installation.installation_id)
+    repositories = await client.list_repositories()
+    repository = next(
+        (
+            candidate
+            for candidate in repositories
+            if candidate.repository_id == request.repository_id
+        ),
+        None,
+    )
+    if repository is None:
+        raise SessionConflict("Repository is not accessible to this GitHub installation")
+    return store.bind_repository(session_id, token, repository)
+
+
+@app.delete(
+    "/v1/sessions/{session_id}/github/repository",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def disconnect_github_repository(
+    session_id: str,
+    token: SessionToken,
+) -> Response:
+    store.disconnect_repository(session_id, token)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @app.get("/v1/sessions/{session_id}", response_model=SessionStatusResponse)
@@ -196,6 +361,30 @@ def verify_release(
         request.changes,
     )
     return ReleaseVerificationResponse(verified=True, ledger_hash=current_hash)
+
+
+@app.post(
+    "/v1/sessions/{session_id}/release",
+    response_model=ReleaseResponse,
+)
+async def create_release(
+    session_id: str,
+    request: ReleaseRequest,
+    token: SessionToken,
+) -> ReleaseResponse:
+    snapshot = store.prepare_release(
+        session_id,
+        token,
+        request.approval_token,
+        request.changes,
+    )
+    repository = snapshot.repository
+    client = GitHubClient(
+        github_app,
+        repository.installation_id,
+        repository.repository_id,
+    )
+    return await release_service.release(snapshot, client)
 
 
 @app.websocket("/v1/extension/{session_id}")
