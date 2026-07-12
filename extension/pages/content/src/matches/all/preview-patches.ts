@@ -14,11 +14,11 @@ const ALLOWED_ATTRIBUTE = /^(?:class|title|role|alt|placeholder|value|aria-[\w-]
 const UNSAFE_VALUE = /(?:<\s*script\b|javascript\s*:|expression\s*\(|@import\b|-moz-binding\b)/i;
 
 const assertSafePatch = (patch: PreviewPatch) => {
-  const unsafeAttribute = Object.entries(patch.attributes).some(
+  const unsafeAttribute = Object.entries(patch.attributes ?? {}).some(
     ([name, value]) =>
       name.toLowerCase().startsWith('on') || !ALLOWED_ATTRIBUTE.test(name) || UNSAFE_VALUE.test(value ?? ''),
   );
-  const unsafeStyle = [...Object.entries(patch.styles), ...Object.entries(patch.parentStyles)].some(
+  const unsafeStyle = [...Object.entries(patch.styles ?? {}), ...Object.entries(patch.parentStyles ?? {})].some(
     ([name, value]) => name.toLowerCase().startsWith('on') || UNSAFE_VALUE.test(value ?? ''),
   );
 
@@ -93,7 +93,7 @@ export class PreviewPatchManager {
 
   private applyToTarget(target: HTMLElement, patch: PreviewPatch) {
     const parent = target.parentElement;
-    if (Object.keys(patch.parentStyles).length > 0 && !parent) {
+    if (Object.keys(patch.parentStyles ?? {}).length > 0 && !parent) {
       throw new Error('Preview patch requires a direct parent');
     }
 
@@ -110,14 +110,14 @@ export class PreviewPatchManager {
     if (patch.text !== undefined) {
       target.textContent = patch.text;
     }
-    for (const [name, value] of Object.entries(patch.attributes)) {
+    for (const [name, value] of Object.entries(patch.attributes ?? {})) {
       restoreAttribute(target, name, value);
     }
-    for (const [name, value] of Object.entries(patch.styles)) {
+    for (const [name, value] of Object.entries(patch.styles ?? {})) {
       if (value === null) target.style.removeProperty(name);
       else target.style.setProperty(name, value);
     }
-    for (const [name, value] of Object.entries(patch.parentStyles)) {
+    for (const [name, value] of Object.entries(patch.parentStyles ?? {})) {
       if (value === null) parent?.style.removeProperty(name);
       else parent?.style.setProperty(name, value);
     }

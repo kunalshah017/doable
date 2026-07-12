@@ -1,9 +1,9 @@
 import type {
-  CaptureScreenshotResponse,
   ContentMessage,
   ExtensionActionResponse,
   ExtensionMessage,
 } from '@extension/shared';
+import { completeSelection } from './selection-completion';
 import 'webextension-polyfill';
 
 const isContentMessage = (message: ExtensionMessage): message is ContentMessage =>
@@ -17,42 +17,24 @@ const getActiveTab = async () => {
   return tab;
 };
 
-const assertSupportedTab = (tab: chrome.tabs.Tab | undefined) => {
-  if (!tab?.id) {
+function assertSupportedTab(tab: chrome.tabs.Tab | undefined): asserts tab is chrome.tabs.Tab & { id: number } {
+  if (tab?.id === undefined) {
     throw new Error('No active tab is available. Open an http(s) page and try again.');
   }
   if (!tab.url || !/^https?:\/\//.test(tab.url)) {
     throw new Error('Doable cannot run on this protected page. Open an http(s) page and try again.');
   }
-  return tab;
-};
+}
 
 const routeToActiveTab = async (message: ContentMessage): Promise<ExtensionActionResponse> => {
-  const tab = assertSupportedTab(await getActiveTab());
+  const tab = await getActiveTab();
+  assertSupportedTab(tab);
   try {
-    return (await chrome.tabs.sendMessage(tab.id!, message)) as ExtensionActionResponse;
+    return await chrome.tabs.sendMessage<ContentMessage, ExtensionActionResponse>(tab.id, message);
   } catch (error) {
     throw new Error(
       `Doable could not reach the active page. Reload the page and try again. ${error instanceof Error ? error.message : String(error)}`,
     );
-  }
-};
-
-const captureScreenshot = async (
-  selectionId: string,
-  sender: chrome.runtime.MessageSender,
-): Promise<CaptureScreenshotResponse> => {
-  try {
-    const tab = assertSupportedTab(sender.tab ?? (await getActiveTab()));
-    const screenshotDataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' });
-    return { type: 'DOABLE_SCREENSHOT_CAPTURED', selectionId, screenshotDataUrl };
-  } catch (error) {
-    return {
-      type: 'DOABLE_SCREENSHOT_CAPTURED',
-      selectionId,
-      screenshotDataUrl: '',
-      error: `Screenshot capture failed: ${error instanceof Error ? error.message : String(error)}`,
-    };
   }
 };
 
@@ -69,13 +51,9 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
     return true;
   }
 
-  if (message.type === 'DOABLE_CAPTURE_SCREENSHOT') {
-    void captureScreenshot(message.selectionId, sender).then(sendResponse);
+  if (message.type === 'DOABLE_SELECTED_COMPONENT_PENDING') {
+    void completeSelection(message.component, sender, chrome.tabs.captureVisibleTab).then(sendResponse);
     return true;
-  }
-
-  if (message.type === 'DOABLE_SELECTED_COMPONENT') {
-    sendResponse({ ok: true } satisfies ExtensionActionResponse);
   }
   return false;
 });

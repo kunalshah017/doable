@@ -1,12 +1,11 @@
 import { PreviewPatchManager } from './preview-patches';
 import type {
-  CaptureScreenshotMessage,
-  CaptureScreenshotResponse,
   ContentMessage,
   ExtensionActionResponse,
   ExtensionMessage,
-  SelectedComponent,
-  SelectedComponentMessage,
+  PendingSelectedComponent,
+  PendingSelectedComponentMessage,
+  SelectionCompletionResponse,
 } from '@extension/shared';
 
 const SHADOW_BOUNDARY = ' >>> ';
@@ -115,7 +114,7 @@ const createHoverOverlay = () => {
   document.documentElement.append(hoverOverlay);
 };
 
-const captureSelectedComponent = (element: HTMLElement): SelectedComponent => {
+const captureSelectedComponent = (element: HTMLElement): PendingSelectedComponent => {
   const computedStyle = getComputedStyle(element);
   const computedStyles = Object.fromEntries(
     COMPUTED_STYLE_PROPERTIES.map(property => [property, computedStyle.getPropertyValue(property)]),
@@ -130,27 +129,19 @@ const captureSelectedComponent = (element: HTMLElement): SelectedComponent => {
     parentHtml: element.parentElement?.outerHTML ?? '',
     computedStyles,
     viewport: { width: window.innerWidth, height: window.innerHeight },
-    screenshotDataUrl: '',
   };
 };
 
 const emitSelection = async (element: HTMLElement) => {
   const component = captureSelectedComponent(element);
-  const initialMessage: SelectedComponentMessage = { type: 'DOABLE_SELECTED_COMPONENT', component };
-  await chrome.runtime.sendMessage(initialMessage);
-
-  const captureMessage: CaptureScreenshotMessage = {
-    type: 'DOABLE_CAPTURE_SCREENSHOT',
-    selectionId: component.selectionId,
-  };
-  const response = (await chrome.runtime.sendMessage(captureMessage)) as CaptureScreenshotResponse;
-  const completedMessage: SelectedComponentMessage = {
-    type: 'DOABLE_SELECTED_COMPONENT',
-    component: { ...component, screenshotDataUrl: response.screenshotDataUrl },
-  };
-  await chrome.runtime.sendMessage(completedMessage);
-
-  if (response.error) console.error(`[Doable] ${response.error}`);
+  const message = {
+    type: 'DOABLE_SELECTED_COMPONENT_PENDING',
+    component,
+  } satisfies PendingSelectedComponentMessage;
+  const response: SelectionCompletionResponse = await chrome.runtime.sendMessage(message);
+  if ('ok' in response && !response.ok) {
+    throw new Error(response.error ?? 'Selection completion failed. Reload the page and try again.');
+  }
 };
 
 const onPointerMove = (event: PointerEvent) => {

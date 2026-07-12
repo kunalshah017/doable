@@ -52,6 +52,25 @@ describe('PreviewPatchManager', () => {
     expect(parent.getAttribute('style')).toBe('display: grid');
   });
 
+  it('applies and undoes a text-only patch when mutation maps are omitted', () => {
+    const manager = new PreviewPatchManager(document);
+    const target = document.querySelector<HTMLElement>('[data-doable-id="save"]')!;
+    const originalDom = target.outerHTML;
+
+    manager.apply('[data-doable-id="save"]', {
+      patchId: 'patch-text-only',
+      selectionId: 'selection-1',
+      text: 'Ship it',
+      rationale: 'Make the action clearer',
+    });
+
+    expect(target.textContent).toBe('Ship it');
+
+    manager.undo('patch-text-only');
+
+    expect(target.outerHTML).toBe(originalDom);
+  });
+
   it('undoes the latest patch without disturbing the older patch, then clears exact originals', () => {
     document.body.innerHTML = '<section><p id="target">Original</p></section>';
     const manager = new PreviewPatchManager(document);

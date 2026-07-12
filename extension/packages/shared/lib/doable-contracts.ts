@@ -1,5 +1,6 @@
 export type SelectedComponent = {
   selectionId: string;
+  tabId: number;
   pageUrl: string;
   doableId?: string;
   selector: string;
@@ -13,14 +14,30 @@ export type SelectedComponent = {
   screenshotDataUrl: string;
 };
 
+export type PendingSelectedComponent = Omit<SelectedComponent, 'tabId' | 'screenshotDataUrl'>;
+
 export type PreviewPatch = {
   patchId: string;
   selectionId: string;
   text?: string;
-  attributes: Record<string, string | null>;
-  styles: Record<string, string | null>;
-  parentStyles: Record<string, string | null>;
+  attributes?: Record<string, string | null>;
+  styles?: Record<string, string | null>;
+  parentStyles?: Record<string, string | null>;
   rationale: string;
+};
+
+export type ApprovedChange = {
+  changeId: string;
+  selection: SelectedComponent;
+  request: string;
+  previewPatch: PreviewPatch;
+  beforeScreenshot: string;
+  afterScreenshot: string;
+  qa: {
+    passed: boolean;
+    checks: string[];
+  };
+  approvedAt: string;
 };
 
 export type SelectionModeMessage = {
@@ -31,6 +48,11 @@ export type SelectionModeMessage = {
 export type SelectedComponentMessage = {
   type: 'DOABLE_SELECTED_COMPONENT';
   component: SelectedComponent;
+};
+
+export type PendingSelectedComponentMessage = {
+  type: 'DOABLE_SELECTED_COMPONENT_PENDING';
+  component: PendingSelectedComponent;
 };
 
 export type ApplyPreviewMessage = {
@@ -48,24 +70,16 @@ export type ClearPreviewsMessage = {
   type: 'DOABLE_CLEAR_PREVIEWS';
 };
 
-export type CaptureScreenshotMessage = {
-  type: 'DOABLE_CAPTURE_SCREENSHOT';
-  selectionId: string;
-};
-
-export type CaptureScreenshotResponse = {
-  type: 'DOABLE_SCREENSHOT_CAPTURED';
-  selectionId: string;
-  screenshotDataUrl: string;
-  error?: string;
-};
-
 export type ExtensionActionResponse = {
   ok: boolean;
   error?: string;
 };
 
+export type SelectionCompletionResponse = SelectedComponentMessage | ExtensionActionResponse;
+
 export type ContentMessage = SelectionModeMessage | ApplyPreviewMessage | UndoPreviewMessage | ClearPreviewsMessage;
 
 export type ExtensionMessage =
-  ContentMessage | SelectedComponentMessage | CaptureScreenshotMessage | CaptureScreenshotResponse;
+  | ContentMessage
+  | PendingSelectedComponentMessage
+  | SelectedComponentMessage;
