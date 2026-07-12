@@ -1,0 +1,48 @@
+name: Release Chrome extension
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - extension/**
+      - .github/workflows/release-extension.yml
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: extension
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.11.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.15.1
+          cache: pnpm
+          cache-dependency-path: extension/pnpm-lock.yaml
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - name: Package Chrome extension
+        run: cd dist && zip -qr ../../doable-chrome.zip .
+
+      - name: Publish rolling release
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh release view extension-latest >/dev/null 2>&1; then
+            gh release create extension-latest \
+              --title "Doable Chrome extension" \
+              --notes "Download the ZIP, extract it, then load the folder from chrome://extensions with Developer mode enabled."
+          fi
+          gh release upload extension-latest doable-chrome.zip --clobber
