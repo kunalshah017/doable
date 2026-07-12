@@ -30,7 +30,19 @@ const COMPUTED_STYLE_PROPERTIES = [
 
 const previewPatches = new PreviewPatchManager(document);
 let selectionModeActive = false;
+let selectionCapturePending = false;
 let hoverOverlay: HTMLDivElement | null = null;
+let backgroundPort: chrome.runtime.Port | null = null;
+
+const connectBackground = () => {
+  if (backgroundPort) return;
+
+  const port = chrome.runtime.connect({ name: 'doable-content' });
+  backgroundPort = port;
+  port.onDisconnect.addListener(() => {
+    if (backgroundPort === port) backgroundPort = null;
+  });
+};
 
 const selectorWithinRoot = (element: HTMLElement, root: Document | ShadowRoot) => {
   const doableId = element.dataset.doableId;
@@ -134,6 +146,7 @@ const captureSelectedComponent = (element: HTMLElement): PendingSelectedComponen
 };
 
 const emitSelection = async (element: HTMLElement) => {
+  connectBackground();
   const component = captureSelectedComponent(element);
   const message = {
     type: 'DOABLE_SELECTED_COMPONENT_PENDING',
@@ -164,6 +177,7 @@ const removeSelectionListeners = () => {
 
 const disableSelectionMode = () => {
   selectionModeActive = false;
+  selectionCapturePending = false;
   removeSelectionListeners();
   hoverOverlay?.remove();
   hoverOverlay = null;
@@ -174,14 +188,25 @@ const onSelectionClick = (event: MouseEvent) => {
 
   event.preventDefault();
   event.stopImmediatePropagation();
+  if (selectionCapturePending) return;
+
+  selectionCapturePending = true;
   const element = elementFromPointer(event);
   if (!element) {
-    void emitSelectionError('Selection failed: No page element was found. Move the pointer over an element and try again.');
+    selectionCapturePending = false;
+    void emitSelectionError(
+      'Selection failed: No page element was found. Move the pointer over an element and try again.',
+    );
     return;
   }
   void emitSelection(element)
     .then(disableSelectionMode)
-    .catch(error => emitSelectionError(error).catch(deliveryError => console.error('[Doable] Error delivery failed', deliveryError)));
+    .catch(error => {
+      selectionCapturePending = false;
+      void emitSelectionError(error).catch(deliveryError =>
+        console.error('[Doable] Error delivery failed', deliveryError),
+      );
+    });
 };
 
 const enableSelectionMode = () => {
@@ -231,12 +256,11 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, _sender, sendRe
   return false;
 });
 
-const backgroundPort = chrome.runtime.connect({ name: 'doable-content' });
 const disposeContentState = () => {
   disableSelectionMode();
   previewPatches.clear();
 };
-backgroundPort.onDisconnect.addListener(disposeContentState);
+connectBackground();
 window.addEventListener('pagehide', disposeContentState, { once: true });
 
 console.info('[Doable] Content script ready');

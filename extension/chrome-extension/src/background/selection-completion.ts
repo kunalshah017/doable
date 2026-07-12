@@ -12,11 +12,13 @@ type SelectionSender = {
 };
 
 type CaptureVisibleTab = (windowId: number | undefined, options: { format: 'png' }) => Promise<string>;
+type QueryActiveTabs = (queryInfo: { active: true; windowId: number }) => Promise<Array<{ id?: number }>>;
 
 export const completeSelection = async (
   selection: PendingSelectedComponent,
   sender: SelectionSender,
   captureVisibleTab: CaptureVisibleTab,
+  queryActiveTabs: QueryActiveTabs,
 ): Promise<SelectionCompletionResponse> => {
   const tabId = sender.tab?.id;
   if (tabId === undefined) {
@@ -25,9 +27,24 @@ export const completeSelection = async (
       error: 'Selection completion failed: The selection sender has no tab ID. Reload the page and try again.',
     };
   }
+  const windowId = sender.tab?.windowId;
+  if (windowId === undefined) {
+    return {
+      ok: false,
+      error: 'Selection completion failed: The selection sender has no window ID. Reload the page and try again.',
+    };
+  }
 
   try {
-    const screenshotDataUrl = await captureVisibleTab(sender.tab?.windowId, { format: 'png' });
+    const [activeTab] = await queryActiveTabs({ active: true, windowId });
+    if (activeTab?.id !== tabId) {
+      return {
+        ok: false,
+        error: 'Selection completion failed: Return to the selected tab and try again.',
+      };
+    }
+
+    const screenshotDataUrl = await captureVisibleTab(windowId, { format: 'png' });
     return {
       type: 'DOABLE_SELECTED_COMPONENT',
       component: {

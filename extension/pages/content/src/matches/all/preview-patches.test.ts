@@ -48,8 +48,10 @@ describe('PreviewPatchManager', () => {
     expect(target.getAttribute('class')).toBe('primary');
     expect(target.getAttribute('aria-label')).toBe('Save');
     expect(target.hasAttribute('title')).toBe(false);
-    expect(target.getAttribute('style')).toBe('color: red');
-    expect(parent.getAttribute('style')).toBe('display: grid');
+    expect(target.style.color).toBe('red');
+    expect(target.getAttribute('style')).not.toContain('padding');
+    expect(parent.style.display).toBe('grid');
+    expect(parent.getAttribute('style')).not.toContain('gap');
   });
 
   it('applies and undoes a text-only patch when mutation maps are omitted', () => {
@@ -69,6 +71,24 @@ describe('PreviewPatchManager', () => {
     manager.undo('patch-text-only');
 
     expect(target.outerHTML).toBe(originalDom);
+  });
+
+  it('does not touch an unrelated empty style attribute when the patch changes no styles', () => {
+    document.body.innerHTML = '<button id="target">Save</button>';
+    const manager = new PreviewPatchManager(document);
+    const target = document.querySelector<HTMLElement>('#target')!;
+
+    manager.apply('#target', {
+      patchId: 'patch-text-only',
+      selectionId: 'selection-1',
+      text: 'Ship it',
+      rationale: 'Preview copy',
+    });
+    target.setAttribute('style', '');
+
+    manager.undo('patch-text-only');
+
+    expect(target.hasAttribute('style')).toBe(true);
   });
 
   it('restores the original child nodes and listeners through undo, replay, and clear', () => {
@@ -150,7 +170,6 @@ describe('PreviewPatchManager', () => {
     const manager = new PreviewPatchManager(document);
     const target = document.querySelector<HTMLElement>('[data-doable-id="save"]')!;
     const parent = target.parentElement!;
-    const originalDom = parent.outerHTML;
 
     manager.apply('[data-doable-id="save"]', {
       patchId: 'patch-1',
@@ -184,7 +203,61 @@ describe('PreviewPatchManager', () => {
 
     manager.clear();
 
-    expect(parent.outerHTML).toBe(originalDom);
+    expect(target.textContent).toBe('Save now');
+    expect(target.className).toBe('primary');
+    expect(target.getAttribute('aria-label')).toBe('Save');
+    expect(target.hasAttribute('title')).toBe(false);
+    expect(target.style.color).toBe('red');
+    expect(target.getAttribute('style')).not.toContain('padding');
+    expect(parent.style.display).toBe('grid');
+    expect(parent.getAttribute('style')).not.toContain('gap');
+  });
+
+  it('preserves unrelated page mutations while restoring patch-owned fields', () => {
+    document.body.innerHTML = `
+      <main style="display: grid; gap: 4px">
+        <button
+          data-doable-id="save"
+          data-state="idle"
+          class="primary"
+          title="Original title"
+          style="color: red; padding: 2px"
+        >Save</button>
+      </main>
+    `;
+    const manager = new PreviewPatchManager(document);
+    const target = document.querySelector<HTMLElement>('[data-doable-id="save"]')!;
+    const parent = target.parentElement!;
+
+    manager.apply('[data-doable-id="save"]', {
+      patchId: 'patch-1',
+      selectionId: 'selection-1',
+      attributes: { title: 'Preview title' },
+      styles: { color: 'blue' },
+      parentStyles: { display: 'flex' },
+      rationale: 'Preview presentation',
+    });
+
+    target.className = 'primary framework-updated';
+    target.dataset.state = 'busy';
+    target.dataset.runtime = 'ready';
+    target.style.padding = '6px';
+    target.style.backgroundColor = 'yellow';
+    parent.style.gap = '12px';
+    parent.style.alignItems = 'center';
+
+    manager.undo('patch-1');
+
+    expect(target.title).toBe('Original title');
+    expect(target.style.color).toBe('red');
+    expect(parent.style.display).toBe('grid');
+    expect(target.className).toBe('primary framework-updated');
+    expect(target.dataset.state).toBe('busy');
+    expect(target.dataset.runtime).toBe('ready');
+    expect(target.style.padding).toBe('6px');
+    expect(target.style.backgroundColor).toBe('yellow');
+    expect(parent.style.gap).toBe('12px');
+    expect(parent.style.alignItems).toBe('center');
   });
 
   it('applies a patch to an open shadow-DOM descendant', () => {

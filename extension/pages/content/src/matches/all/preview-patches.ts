@@ -6,8 +6,17 @@ type PatchSnapshot = {
   target: HTMLElement;
   parent: HTMLElement | null;
   childNodes?: Node[];
-  attributes: Array<[string, string]>;
-  parentStyle: string | null;
+  attributes: Array<[string, string | null]>;
+  styles: StylePropertySnapshot[];
+  parentStyles: StylePropertySnapshot[];
+  targetHadStyleAttribute: boolean;
+  parentHadStyleAttribute: boolean;
+};
+
+type StylePropertySnapshot = {
+  name: string;
+  value: string | null;
+  priority: string;
 };
 
 const ALLOWED_ATTRIBUTE = /^(?:class|title|role|alt|placeholder|value|aria-[\w-]+|data-[\w-]+)$/i;
@@ -32,6 +41,30 @@ const restoreAttribute = (element: HTMLElement, name: string, value: string | nu
     element.removeAttribute(name);
   } else {
     element.setAttribute(name, value);
+  }
+};
+
+const snapshotStyleProperties = (element: HTMLElement, names: string[]): StylePropertySnapshot[] =>
+  names.map(name => {
+    const value = element.style.getPropertyValue(name);
+    const priority = element.style.getPropertyPriority(name);
+    const propertyNames = Array.from({ length: element.style.length }, (_, index) => element.style.item(index));
+    return { name, value: propertyNames.includes(name) ? value : null, priority };
+  });
+
+const restoreStyleProperties = (
+  element: HTMLElement,
+  properties: StylePropertySnapshot[],
+  hadStyleAttribute: boolean,
+) => {
+  if (properties.length === 0) return;
+
+  for (const { name, value, priority } of properties) {
+    if (value === null) element.style.removeProperty(name);
+    else element.style.setProperty(name, value, priority);
+  }
+  if (!hadStyleAttribute && element.getAttribute('style') === '') {
+    element.removeAttribute('style');
   }
 };
 
@@ -103,8 +136,11 @@ export class PreviewPatchManager {
       target,
       parent,
       childNodes: patch.text === undefined ? undefined : Array.from(target.childNodes),
-      attributes: Array.from(target.attributes, attribute => [attribute.name, attribute.value]),
-      parentStyle: parent?.getAttribute('style') ?? null,
+      attributes: Object.keys(patch.attributes ?? {}).map(name => [name, target.getAttribute(name)]),
+      styles: snapshotStyleProperties(target, Object.keys(patch.styles ?? {})),
+      parentStyles: parent ? snapshotStyleProperties(parent, Object.keys(patch.parentStyles ?? {})) : [],
+      targetHadStyleAttribute: target.hasAttribute('style'),
+      parentHadStyleAttribute: parent?.hasAttribute('style') ?? false,
     });
 
     if (patch.text !== undefined) {
@@ -127,14 +163,12 @@ export class PreviewPatchManager {
     if (snapshot.childNodes) {
       snapshot.target.replaceChildren(...snapshot.childNodes);
     }
-    for (const name of snapshot.target.getAttributeNames()) {
-      snapshot.target.removeAttribute(name);
-    }
     for (const [name, value] of snapshot.attributes) {
-      snapshot.target.setAttribute(name, value);
+      restoreAttribute(snapshot.target, name, value);
     }
+    restoreStyleProperties(snapshot.target, snapshot.styles, snapshot.targetHadStyleAttribute);
     if (snapshot.parent) {
-      restoreAttribute(snapshot.parent, 'style', snapshot.parentStyle);
+      restoreStyleProperties(snapshot.parent, snapshot.parentStyles, snapshot.parentHadStyleAttribute);
     }
   }
 }

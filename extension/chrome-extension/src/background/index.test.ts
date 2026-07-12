@@ -30,7 +30,7 @@ describe('background selection routing', () => {
       },
       tabs: {
         captureVisibleTab,
-        query: vi.fn(),
+        query: vi.fn(async () => [{ id: 42 }]),
         sendMessage: vi.fn(),
       },
     });
@@ -56,5 +56,39 @@ describe('background selection routing', () => {
     expect(broadcast).toHaveBeenCalledOnce();
     expect(broadcast).toHaveBeenCalledWith(completed);
     expect(sendResponse).toHaveBeenCalledWith(completed);
+  });
+
+  it('does not capture or broadcast when the sender tab is inactive', async () => {
+    let onMessage: Parameters<typeof chrome.runtime.onMessage.addListener>[0] | undefined;
+    const broadcast = vi.fn(async () => undefined);
+    const captureVisibleTab = vi.fn(async () => 'data:image/png;base64,captured');
+    vi.stubGlobal('chrome', {
+      runtime: {
+        onMessage: { addListener: vi.fn(listener => (onMessage = listener)) },
+        onConnect: { addListener: vi.fn() },
+        sendMessage: broadcast,
+      },
+      tabs: {
+        captureVisibleTab,
+        query: vi.fn(async () => []),
+        sendMessage: vi.fn(),
+      },
+    });
+    await import('./index');
+    const sendResponse = vi.fn();
+
+    onMessage?.(
+      { type: 'DOABLE_SELECTED_COMPONENT_PENDING', component: pendingSelection },
+      { tab: { id: 42, windowId: 7 } } as chrome.runtime.MessageSender,
+      sendResponse,
+    );
+    await vi.waitFor(() => expect(sendResponse).toHaveBeenCalledOnce());
+
+    expect(captureVisibleTab).not.toHaveBeenCalled();
+    expect(broadcast).not.toHaveBeenCalled();
+    expect(sendResponse).toHaveBeenCalledWith({
+      ok: false,
+      error: 'Selection completion failed: Return to the selected tab and try again.',
+    });
   });
 });

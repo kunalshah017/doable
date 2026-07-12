@@ -15,13 +15,20 @@ const pendingSelection = {
 describe('completeSelection', () => {
   it('derives tab ID and screenshot from the background context', async () => {
     const captureVisibleTab = vi.fn(async () => 'data:image/png;base64,captured');
+    const queryActiveTabs = vi.fn(async () => [{ id: 42 }]);
     const callerPayload = Object.assign({}, pendingSelection, {
       tabId: 999,
       screenshotDataUrl: 'data:image/png;base64,caller-supplied',
     });
 
-    const result = await completeSelection(callerPayload, { tab: { id: 42, windowId: 7 } }, captureVisibleTab);
+    const result = await completeSelection(
+      callerPayload,
+      { tab: { id: 42, windowId: 7 } },
+      captureVisibleTab,
+      queryActiveTabs,
+    );
 
+    expect(queryActiveTabs).toHaveBeenCalledWith({ active: true, windowId: 7 });
     expect(captureVisibleTab).toHaveBeenCalledWith(7, { format: 'png' });
     expect(result).toEqual({
       type: 'DOABLE_SELECTED_COMPONENT',
@@ -35,13 +42,42 @@ describe('completeSelection', () => {
 
   it('returns an actionable error when the sender tab ID is absent', async () => {
     const captureVisibleTab = vi.fn(async () => 'data:image/png;base64,captured');
+    const queryActiveTabs = vi.fn(async () => [{ id: 42 }]);
 
-    const result = await completeSelection(pendingSelection, { tab: { windowId: 7 } }, captureVisibleTab);
+    const result = await completeSelection(
+      pendingSelection,
+      { tab: { windowId: 7 } },
+      captureVisibleTab,
+      queryActiveTabs,
+    );
 
+    expect(queryActiveTabs).not.toHaveBeenCalled();
     expect(captureVisibleTab).not.toHaveBeenCalled();
     expect(result).toEqual({
       ok: false,
       error: 'Selection completion failed: The selection sender has no tab ID. Reload the page and try again.',
+    });
+  });
+
+  it.each([
+    ['no active tab', []],
+    ['another active tab', [{ id: 99 }]],
+  ])('rejects capture when the sender is inactive: %s', async (_case, activeTabs) => {
+    const captureVisibleTab = vi.fn(async () => 'data:image/png;base64,captured');
+    const queryActiveTabs = vi.fn(async () => activeTabs);
+
+    const result = await completeSelection(
+      pendingSelection,
+      { tab: { id: 42, windowId: 7 } },
+      captureVisibleTab,
+      queryActiveTabs,
+    );
+
+    expect(queryActiveTabs).toHaveBeenCalledWith({ active: true, windowId: 7 });
+    expect(captureVisibleTab).not.toHaveBeenCalled();
+    expect(result).toEqual({
+      ok: false,
+      error: 'Selection completion failed: Return to the selected tab and try again.',
     });
   });
 });

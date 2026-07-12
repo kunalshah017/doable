@@ -1,5 +1,5 @@
-import type { ContentMessage, ExtensionActionResponse, ExtensionMessage } from '@extension/shared';
 import { completeSelection } from './selection-completion';
+import type { ContentMessage, ExtensionActionResponse, ExtensionMessage } from '@extension/shared';
 import 'webextension-polyfill';
 
 const isContentMessage = (message: ExtensionMessage): message is ContentMessage =>
@@ -13,14 +13,16 @@ const getActiveTab = async () => {
   return tab;
 };
 
-function assertSupportedTab(tab: chrome.tabs.Tab | undefined): asserts tab is chrome.tabs.Tab & { id: number } {
+const assertSupportedTab: (
+  tab: chrome.tabs.Tab | undefined,
+) => asserts tab is chrome.tabs.Tab & { id: number } = tab => {
   if (tab?.id === undefined) {
     throw new Error('No active tab is available. Open an http(s) page and try again.');
   }
   if (!tab.url || !/^https?:\/\//.test(tab.url)) {
     throw new Error('Doable cannot run on this protected page. Open an http(s) page and try again.');
   }
-}
+};
 
 const routeToActiveTab = async (message: ContentMessage): Promise<ExtensionActionResponse> => {
   const tab = await getActiveTab();
@@ -48,16 +50,18 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
   }
 
   if (message.type === 'DOABLE_SELECTED_COMPONENT_PENDING') {
-    void completeSelection(message.component, sender, chrome.tabs.captureVisibleTab).then(async response => {
-      if ('type' in response && response.type === 'DOABLE_SELECTED_COMPONENT') {
-        try {
-          await chrome.runtime.sendMessage(response);
-        } catch (error) {
-          console.error('[Doable] Selection delivery failed', error);
+    void completeSelection(message.component, sender, chrome.tabs.captureVisibleTab, chrome.tabs.query).then(
+      async response => {
+        if ('type' in response && response.type === 'DOABLE_SELECTED_COMPONENT') {
+          try {
+            await chrome.runtime.sendMessage(response);
+          } catch (error) {
+            console.error('[Doable] Selection delivery failed', error);
+          }
         }
-      }
-      sendResponse(response);
-    });
+        sendResponse(response);
+      },
+    );
     return true;
   }
   return false;
