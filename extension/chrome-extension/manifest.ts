@@ -5,10 +5,9 @@ const packageJson = JSON.parse(readFileSync('./package.json', 'utf8'));
 
 const manifest = {
   manifest_version: 3,
-  default_locale: 'en',
-  name: '__MSG_extensionName__',
+  name: 'Doable',
   version: packageJson.version,
-  description: '__MSG_extensionDescription__',
+  description: 'Preview website changes with a Hermes-powered engineering agency',
   host_permissions: ['http://*/*', 'https://*/*'],
   permissions: ['activeTab', 'storage', 'scripting', 'tabs', 'sidePanel'],
   background: {

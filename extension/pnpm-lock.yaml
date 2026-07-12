@@ -216,16 +216,6 @@ importers:
         specifier: ^8.18.2
         version: 8.21.0
 
-  packages/i18n:
-    dependencies:
-      '@extension/env':
-        specifier: workspace:*
-        version: link:../env
-    devDependencies:
-      '@extension/tsconfig':
-        specifier: workspace:*
-        version: link:../tsconfig
-
   packages/shared:
     dependencies:
       react-error-boundary:
@@ -258,9 +248,6 @@ importers:
 
   packages/ui:
     dependencies:
-      '@extension/i18n':
-        specifier: workspace:*
-        version: link:../i18n
       '@extension/shared':
         specifier: workspace:*
         version: link:../shared
@@ -345,9 +332,6 @@ importers:
 
   pages/side-panel:
     dependencies:
-      '@extension/i18n':
-        specifier: workspace:*
-        version: link:../../packages/i18n
       '@extension/shared':
         specifier: workspace:*
         version: link:../../packages/shared
