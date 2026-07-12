@@ -52,7 +52,7 @@ describe('PreviewPatchManager', () => {
     expect(parent.getAttribute('style')).toBe('display: grid');
   });
 
-  it('restores absent style attributes and clears stacked patches in reverse order', () => {
+  it('undoes the latest patch without disturbing the older patch, then clears exact originals', () => {
     document.body.innerHTML = '<section><p id="target">Original</p></section>';
     const manager = new PreviewPatchManager(document);
     const target = document.querySelector<HTMLElement>('#target')!;
@@ -77,11 +77,58 @@ describe('PreviewPatchManager', () => {
       rationale: 'Second draft',
     });
 
+    manager.undo('patch-2');
+
+    expect(target.textContent).toBe('First');
+    expect(target.style.color).toBe('red');
+    expect(parent.style.display).toBe('flex');
+
     manager.clear();
 
     expect(target.textContent).toBe('Original');
     expect(target.hasAttribute('style')).toBe(false);
     expect(parent.hasAttribute('style')).toBe(false);
+  });
+
+  it('preserves newer overlapping changes when undoing an older patch, then clears to the exact original DOM', () => {
+    const manager = new PreviewPatchManager(document);
+    const target = document.querySelector<HTMLElement>('[data-doable-id="save"]')!;
+    const parent = target.parentElement!;
+    const originalDom = parent.outerHTML;
+
+    manager.apply('[data-doable-id="save"]', {
+      patchId: 'patch-1',
+      selectionId: 'selection-1',
+      text: 'First draft',
+      attributes: { class: 'primary first', 'aria-label': 'First action' },
+      styles: { color: 'orange', padding: '4px' },
+      parentStyles: { display: 'flex', gap: '4px' },
+      rationale: 'First draft',
+    });
+    manager.apply('[data-doable-id="save"]', {
+      patchId: 'patch-2',
+      selectionId: 'selection-1',
+      text: 'Latest draft',
+      attributes: { class: 'primary latest', 'aria-label': null, title: 'Latest action' },
+      styles: { color: 'blue', padding: '8px' },
+      parentStyles: { display: 'block', gap: '12px' },
+      rationale: 'Latest draft',
+    });
+
+    manager.undo('patch-1');
+
+    expect(target.textContent).toBe('Latest draft');
+    expect(target.getAttribute('class')).toBe('primary latest');
+    expect(target.hasAttribute('aria-label')).toBe(false);
+    expect(target.getAttribute('title')).toBe('Latest action');
+    expect(target.style.color).toBe('blue');
+    expect(target.style.padding).toBe('8px');
+    expect(parent.style.display).toBe('block');
+    expect(parent.style.gap).toBe('12px');
+
+    manager.clear();
+
+    expect(parent.outerHTML).toBe(originalDom);
   });
 
   it('applies a patch to an open shadow-DOM descendant', () => {

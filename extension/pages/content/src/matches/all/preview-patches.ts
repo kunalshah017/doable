@@ -2,11 +2,11 @@ import type { PreviewPatch } from '@extension/shared';
 
 type PatchSnapshot = {
   patchId: string;
+  patch: PreviewPatch;
   target: HTMLElement;
   parent: HTMLElement | null;
   text: string | null;
-  attributes: Map<string, string | null>;
-  targetStyle: string | null;
+  attributes: Array<[string, string]>;
   parentStyle: string | null;
 };
 
@@ -69,7 +69,29 @@ export class PreviewPatchManager {
       throw new Error(`Preview patch already exists: ${patch.patchId}`);
     }
 
-    const target = matches[0];
+    this.applyToTarget(matches[0], patch);
+  }
+
+  undo(patchId: string) {
+    const index = this.snapshots.findIndex(snapshot => snapshot.patchId === patchId);
+    if (index === -1) {
+      throw new Error(`Preview patch not found: ${patchId}`);
+    }
+
+    const remaining = this.snapshots.filter(snapshot => snapshot.patchId !== patchId);
+    this.clear();
+    for (const snapshot of remaining) {
+      this.applyToTarget(snapshot.target, snapshot.patch);
+    }
+  }
+
+  clear() {
+    while (this.snapshots.length > 0) {
+      this.restore(this.snapshots.pop()!);
+    }
+  }
+
+  private applyToTarget(target: HTMLElement, patch: PreviewPatch) {
     const parent = target.parentElement;
     if (Object.keys(patch.parentStyles).length > 0 && !parent) {
       throw new Error('Preview patch requires a direct parent');
@@ -77,11 +99,11 @@ export class PreviewPatchManager {
 
     this.snapshots.push({
       patchId: patch.patchId,
+      patch,
       target,
       parent,
       text: target.textContent,
-      attributes: new Map(Object.keys(patch.attributes).map(name => [name, target.getAttribute(name)])),
-      targetStyle: target.getAttribute('style'),
+      attributes: Array.from(target.attributes, attribute => [attribute.name, attribute.value]),
       parentStyle: parent?.getAttribute('style') ?? null,
     });
 
@@ -101,28 +123,14 @@ export class PreviewPatchManager {
     }
   }
 
-  undo(patchId: string) {
-    const index = this.snapshots.findIndex(snapshot => snapshot.patchId === patchId);
-    if (index === -1) {
-      throw new Error(`Preview patch not found: ${patchId}`);
-    }
-
-    this.restore(this.snapshots[index]);
-    this.snapshots.splice(index, 1);
-  }
-
-  clear() {
-    while (this.snapshots.length > 0) {
-      this.restore(this.snapshots.pop()!);
-    }
-  }
-
   private restore(snapshot: PatchSnapshot) {
     snapshot.target.textContent = snapshot.text;
-    for (const [name, value] of snapshot.attributes) {
-      restoreAttribute(snapshot.target, name, value);
+    for (const name of snapshot.target.getAttributeNames()) {
+      snapshot.target.removeAttribute(name);
     }
-    restoreAttribute(snapshot.target, 'style', snapshot.targetStyle);
+    for (const [name, value] of snapshot.attributes) {
+      snapshot.target.setAttribute(name, value);
+    }
     if (snapshot.parent) {
       restoreAttribute(snapshot.parent, 'style', snapshot.parentStyle);
     }
